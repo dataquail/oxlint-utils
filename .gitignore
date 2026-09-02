@@ -53,6 +53,10 @@ vitest.config.*.timestamp*
 .astro
 website/dist
 
+# Written by Verdaccio the first time someone registers a throwaway user against
+# the local registry (see RELEASE.md, "Testing a publish locally").
+.verdaccio/htpasswd
+
 # Scratch config files written by the config-loader tests. They live inside the
 # package because Vitest resolves the loader's dynamic import through its own
 # module graph, which does not reach outside the project root.

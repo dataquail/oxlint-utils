@@ -36,11 +36,26 @@ else
   echo "No release tag in the environment — publishing every package..."
 fi
 
+# A package that is not on the registry yet has no version for nx to compare
+# against, so `nx release publish` runs an `npm view` that 404s. Nx does tolerate
+# that 404 — but by matching the words "not found" in npm's error prose, which is
+# exactly the kind of check that breaks the day npm rewords an error. Since we
+# can just ask the registry ourselves, tell nx up front that this is a first
+# release and let it skip the lookup entirely.
+#
+# Only meaningful when this run is scoped to one package; a bare dispatch that
+# publishes everything is not a first release of anything.
+FIRST_RELEASE_ARGS=()
+if [ -n "${PACKAGE_NAME:-}" ] && ! npm view "$PACKAGE_NAME" version >/dev/null 2>&1; then
+  echo "${PACKAGE_NAME} is not on the registry yet — publishing it for the first time."
+  FIRST_RELEASE_ARGS=(--first-release)
+fi
+
 PUBLISH_LOG=$(mktemp)
 trap 'rm -f "$PUBLISH_LOG"' EXIT
 
 set +e
-npx nx release publish --verbose "${PROJECT_ARGS[@]}" 2>&1 | tee "$PUBLISH_LOG"
+npx nx release publish --verbose "${PROJECT_ARGS[@]}" "${FIRST_RELEASE_ARGS[@]}" 2>&1 | tee "$PUBLISH_LOG"
 PUBLISH_EXIT=${PIPESTATUS[0]}
 set -e
 
@@ -93,6 +108,15 @@ fi
 echo
 echo "❌ Publish failed — these versions did not reach the registry:"
 printf '   - %s\n' "${MISSING[@]}"
+
+if grep -qiE "E403|forbidden" "$PUBLISH_LOG" && [ -n "${FIRST_RELEASE_ARGS:-}" ]; then
+  echo
+  echo "   npm refused a package name that does not exist yet. The usual cause"
+  echo "   is the token: a granular access token restricted to selected packages"
+  echo "   cannot CREATE one, only publish over names it already lists."
+  echo "   Fix: use a token scoped to the whole account/org, or a classic"
+  echo "   Automation token, for the first publish of a new package."
+fi
 
 if grep -qiE "EOTP|one-time password" "$PUBLISH_LOG"; then
   echo

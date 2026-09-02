@@ -1,0 +1,105 @@
+name: First Publish
+
+# The manual bootstrap for a package that has never been released.
+#
+# The normal path is release-triggered — a conventional commit lands on `main`,
+# `nx release` versions and tags what it touched, and creating that GitHub
+# release fires `publish.yml`. A brand-new package has nothing for that path to
+# derive from: no git tag, no version on the registry. This workflow is the one
+# button that gets a package over that line, after which the normal flow owns it.
+#
+# It refuses to touch a package that is already on the registry, so it cannot be
+# used as a general republish tool by mistake.
+
+on:
+  workflow_dispatch:
+    inputs:
+      packages:
+        description: "Package names to publish, comma- or space-separated (e.g. oxlint-architecture-rules)"
+        required: true
+        type: string
+      dry_run:
+        description: "Dry run — print the plan and the tarball contents, publish nothing"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  id-token: write
+
+# Shares a group with nothing else on purpose: two release-ish jobs versioning
+# the same package concurrently is how you get two tags for one version.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  first-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # A release is cut from `main` and pushes a version commit back to it.
+      # Dispatching from another branch would silently release the wrong tree,
+      # so say so rather than ignoring the selector.
+      - name: Refuse a dispatch from anywhere but main
+        if: github.ref_name != 'main'
+        run: |
+          echo "::error::Releases are cut from main, but this run was dispatched from '${{ github.ref_name }}'."
+          exit 1
+
+      - uses: actions/create-github-app-token@v1
+        id: app-token
+        with:
+          app-id: ${{ secrets.VERSION_BUMPER_APPID }}
+          private-key: ${{ secrets.VERSION_BUMPER_SECRET }}
+
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          # `nx release` derives the version bump from conventional commits, so
+          # it needs the history, not a shallow clone.
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - uses: pnpm/action-setup@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: "pnpm"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Configure git for the version commit
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+
+      - name: First publish
+        run: ./scripts/first-publish.sh
+        env:
+          PACKAGES: ${{ inputs.packages }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # Only meaningful in a trusted CI environment, which is the reason a
+          # first publish is worth doing here rather than from a laptop: the
+          # `provenance=true` in .npmrc fails outright anywhere else.
+          NPM_CONFIG_PROVENANCE: true
+
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo "### First publish"
+            echo
+            echo "| | |"
+            echo "| --- | --- |"
+            echo "| Packages | \`${{ inputs.packages }}\` |"
+            echo "| Mode | ${{ inputs.dry_run == true && 'dry run — nothing published' || 'live publish' }} |"
+            echo "| Result | ${{ job.status }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
