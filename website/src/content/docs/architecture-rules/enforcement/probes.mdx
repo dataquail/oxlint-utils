@@ -46,10 +46,10 @@ that is wrong in the same way in both places will pass.
 
 The second is sharper: **a synthetic probe never meets a parser.** It is a path and a name
 handed straight to the rule's patterns. Whether the adapter would ever _extract_ that name
-from real source — whether it reads members out of an `interface`, say, or out of
-`type Port = Base & { … }` — is a question the probe does not ask. A `members` rule about a
-declaration shape the extractor is blind to passes its synthetic probe and enforces
-nothing, which is precisely the failure probes exist to prevent.
+from real source — whether it reads members out of a class body, say — is a question the
+probe does not ask. A `members` rule about a declaration shape the extractor is blind to
+passes its synthetic probe and enforces nothing, which is precisely the failure probes
+exist to prevent.
 
 ## Writing the probe yourself
 
@@ -79,10 +79,10 @@ parser reads no such site, the rule is refused at load with the same error a dri
 gets, and `architecture facts` shows what the parser does read.
 
 Write the snippet in the shape your real code takes. If your ports are interfaces, write an
-interface; if they are intersections, write one. Today the extractor reads members out of a
-bare `type X = { … }` alias only, so a rule probed with an `interface` refuses to load — and
-that refusal is the point. It is the difference between a rule you _believe_ covers your
-ports and one that has been shown to.
+interface; if they are intersections, write one. The extractor reads members written in an
+alias or an interface, through intersections and unions — and not, say, a class body, so a
+rule probed with a class refuses to load. That refusal is the point. It is the difference
+between a rule you _believe_ covers your ports and one that has been shown to.
 
 For `exports`, the snippet is an import statement and the name is the binding:
 

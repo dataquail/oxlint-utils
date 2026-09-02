@@ -127,6 +127,50 @@ describe("member sites", () => {
   });
 });
 
+describe("declaration shapes", () => {
+  const declared = (source: string) =>
+    factsFor(source).memberSites.map((site) => `${site.in ?? ""}.${site.name}`);
+
+  it("reads an interface's own members, and not the ones it extends", () => {
+    expect(declared(`interface A { a(): void } interface B extends A { b(): void }`)).toEqual([
+      "A.a",
+      "B.b",
+    ]);
+  });
+
+  it("reads the literal half of an intersection under the alias's own name", () => {
+    expect(declared(`type Base = { a(): void }; type Port = Base & { b(): void };`)).toEqual([
+      "Base.a",
+      "Port.b",
+    ]);
+  });
+
+  it("reads every constituent of a union", () => {
+    expect(declared(`type E = { left(): void } | { right(): void };`)).toEqual([
+      "E.left",
+      "E.right",
+    ]);
+  });
+
+  it("reads through parentheses", () => {
+    expect(declared(`type P = ({ a(): void } & { b(): void });`)).toEqual(["P.a", "P.b"]);
+  });
+
+  it("does not follow a reference — its members are declared where it is", () => {
+    expect(declared(`type Base = { a(): void }; type Port = Base;`)).toEqual(["Base.a"]);
+  });
+
+  it("steps over an interface's call and construct signatures", () => {
+    expect(declared(`interface F { (x: number): void; new (x: number): F; own(): void }`)).toEqual([
+      "F.own",
+    ]);
+  });
+
+  it("does not read a class body — a class is not a type declaration", () => {
+    expect(declared(`class K { k(): void {} }`)).toEqual([]);
+  });
+});
+
 describe("members the reader steps over", () => {
   it("reads a string-literal member name and the alias it sits in", () => {
     expect(factsFor(`type X = { "find-one": () => void };`).memberSites).toEqual([

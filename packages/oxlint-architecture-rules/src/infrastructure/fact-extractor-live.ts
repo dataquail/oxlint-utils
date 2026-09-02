@@ -49,6 +49,19 @@ const bindingsOfExportClause = (
   return found;
 };
 
+// The type literals written in a type, through intersections, unions and
+// parentheses: `type Port = Base & ({ a(): void } | { b(): void })` declares `a`
+// and `b`. A reference is not followed — `Base`'s members are declared where
+// `Base` is, and are reported there under its own name.
+const literalsOf = (node: ts.TypeNode): ReadonlyArray<ts.TypeLiteralNode> => {
+  if (ts.isTypeLiteralNode(node)) return [node];
+  if (ts.isIntersectionTypeNode(node) || ts.isUnionTypeNode(node)) {
+    return node.types.flatMap(literalsOf);
+  }
+  if (ts.isParenthesizedTypeNode(node)) return literalsOf(node.type);
+  return [];
+};
+
 const calleeNameOf = (expression: ts.LeftHandSideExpression): string | null => {
   if (ts.isIdentifier(expression)) return expression.text;
   if (ts.isPropertyAccessExpression(expression) && ts.isIdentifier(expression.name)) {
@@ -74,6 +87,20 @@ export const factsOfText = (file: string, text: string): SourceFacts => {
     }
     const existing = bindings.get(specifier);
     if (existing !== undefined) for (const binding of found) existing.push(binding);
+  };
+
+  // The members written in a declaration, under that declaration's name. A
+  // computed key is not a name a vocabulary rule can speak about; neither is an
+  // index, call or construct signature.
+  const declared = (declaration: string, members: ReadonlyArray<ts.TypeElement>): void => {
+    for (const member of members) {
+      if (!ts.isPropertySignature(member) && !ts.isMethodSignature(member)) continue;
+      if (ts.isComputedPropertyName(member.name)) continue;
+      const name = nameOf(member.name);
+      if (name !== null) {
+        memberSites.push({ file, subject: "type-members", name, in: declaration });
+      }
+    }
   };
 
   const visit = (node: ts.Node): void => {
@@ -104,17 +131,13 @@ export const factsOfText = (file: string, text: string): SourceFacts => {
 
       const callee = calleeNameOf(node.expression);
       if (callee !== null) memberSites.push({ file, subject: "calls", name: callee });
-    } else if (ts.isTypeAliasDeclaration(node) && ts.isTypeLiteralNode(node.type)) {
-      const declaration = node.name.text;
-      for (const member of node.type.members) {
-        // A computed key is not a name a vocabulary rule can speak about.
-        if (!ts.isPropertySignature(member) && !ts.isMethodSignature(member)) continue;
-        if (ts.isComputedPropertyName(member.name)) continue;
-        const name = nameOf(member.name);
-        if (name !== null) {
-          memberSites.push({ file, subject: "type-members", name, in: declaration });
-        }
-      }
+    } else if (ts.isTypeAliasDeclaration(node)) {
+      declared(
+        node.name.text,
+        literalsOf(node.type).flatMap((literal) => literal.members),
+      );
+    } else if (ts.isInterfaceDeclaration(node)) {
+      declared(node.name.text, node.members);
     }
 
     ts.forEachChild(node, visit);

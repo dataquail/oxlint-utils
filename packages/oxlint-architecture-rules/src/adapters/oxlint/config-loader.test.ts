@@ -95,8 +95,8 @@ describe("loadPolicy", () => {
 
   // The point of an authored probe. Both members rules below are written the
   // same way; only the snippet differs. The synthetic probe passes both. The
-  // real parser reads a member out of the bare alias and nothing out of the
-  // interface — so the second rule is refused at load, today, rather than
+  // real parser reads a member out of the interface and nothing out of the
+  // class body — so the second rule is refused at load, today, rather than
   // silently enforcing nothing until someone widens the extractor.
   const membersRuleWith = (probe: string) => `tree: {
     "packages/server/src/modules/{module}/domain/": {
@@ -117,7 +117,7 @@ describe("loadPolicy", () => {
   }`;
 
   it("loads a member rule whose source probe the parser reads and the rule reports", async () => {
-    const probe = `{ source: "export type TodosRepositoryShape = { findOneById(): void };", name: "findOneById" }`;
+    const probe = `{ source: "export interface TodosRepositoryShape { findOneById(): void }", name: "findOneById" }`;
     const policy = await loadPolicy(
       repoRoot,
       writeConfig(`export default { ${RESOLVE}, ${membersRuleWith(probe)} };`),
@@ -126,7 +126,7 @@ describe("loadPolicy", () => {
   });
 
   it("refuses a member rule whose source probe is a shape the parser does not read", async () => {
-    const probe = `{ source: "export interface TodosRepositoryShape { findOneById(): void }", name: "findOneById" }`;
+    const probe = `{ source: "export class TodosRepositoryShape { findOneById(): void {} }", name: "findOneById" }`;
     await expect(
       loadPolicy(
         repoRoot,

@@ -122,6 +122,13 @@ Extract members from every declaration shape a port realistically takes:
 Both adapters, plus fixtures in the 0.2 corpus for each shape. Keep the literal
 `"type-members"`; document it as "members of a named type declaration".
 
+**As landed:** interfaces (own members; `extends` not followed), and inside an alias,
+intersections, unions and parentheses — all reported under the declaring name. **No
+reference following at all**, including the same-file alias case above: `Base`'s members
+are reported under `Base` where they are written, and following a reference would report
+every member twice under two names. The demonstration in `config-loader.test.ts` now
+refuses a `class` probe, since an `interface` one loads.
+
 ### 1.2 Expose `kinds` in the manifest and close `export *` (F5, F6)
 
 - `ExportRestriction` gains `kinds?: Array<"named" | "default" | "namespace">`, lowered to
@@ -274,7 +281,7 @@ page, and — where the family has one — a rule in the root `architecture.conf
 
 ```
 Phase 0  facts cmd → parity test (+F3 fix) → fixture probes   [done]
-Phase 1  widen type-members → kinds + export * → dogfood members/exports
+Phase 1  widen type-members [done] → kinds + export * → dogfood members/exports
 Phase 2  surface family
 Phase 3  graph pass → cycles → orphans → reach
 Phase 4  package.json → tsconfig → type-refs → receiver-aware calls

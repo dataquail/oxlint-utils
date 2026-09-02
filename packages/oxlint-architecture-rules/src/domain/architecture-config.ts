@@ -95,9 +95,10 @@ export const ExportRule = Schema.Struct({
   fix: Schema.optionalKey(Schema.Literals(["subpath-namespace-import"])),
 });
 
-// What kind of declared name a rule is about. `type-members` are the members of
-// a type alias (a port's method vocabulary); `calls` are called identifiers (the
-// hooks a tier may reach for).
+// What kind of declared name a rule is about. `type-members` are the members
+// written in a named type declaration — an alias or an interface, through
+// intersections and unions — (a port's method vocabulary); `calls` are called
+// identifiers (the hooks a tier may reach for).
 const MemberSubject = Schema.Literals(["type-members", "calls"]);
 
 // `source`, when present, is a snippet the loading adapter parses: the probe

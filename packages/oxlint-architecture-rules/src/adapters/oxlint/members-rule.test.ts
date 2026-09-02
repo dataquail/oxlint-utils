@@ -75,6 +75,10 @@ new RuleTester({ cwd: repoRoot }).run("members", makeMembersRule(policy()), {
     { code: "type TodosRepositoryShape = { upsertMany(): void };", filename: PORT },
     // A helper type in the same file is not the port, so `in` must not reach it.
     { code: "type TodoRow = { readonly findOneById: () => void };", filename: PORT },
+    // A reference is not followed: `Base`'s members are `Base`'s, not the port's.
+    { code: "type TodosRepositoryShape = Base;", filename: PORT },
+    // A class is not a type declaration.
+    { code: "class TodosRepositoryShape { grantRole(): void {} }", filename: PORT },
     { code: "const a = useAtomValue(x);", filename: VIEW },
     { code: "const b = useId();", filename: VIEW },
     // A `use` name that is not a hook name.
@@ -90,6 +94,24 @@ new RuleTester({ cwd: repoRoot }).run("members", makeMembersRule(policy()), {
     },
     {
       code: "type TodosRepositoryShape = { grantRole(): void };",
+      filename: PORT,
+      errors: [{ message: /^\[dumb-repository-ports\] Port method "grantRole"/ }],
+    },
+    {
+      // The same port declared as an interface.
+      code: "interface TodosRepositoryShape { grantRole(): void }",
+      filename: PORT,
+      errors: [{ message: /^\[dumb-repository-ports\] Port method "grantRole"/ }],
+    },
+    {
+      // The same port declared as an intersection: the literal half is the
+      // port's own vocabulary, reported under the port's name.
+      code: "type TodosRepositoryShape = Base & { grantRole(): void };",
+      filename: PORT,
+      errors: [{ message: /^\[dumb-repository-ports\] Port method "grantRole"/ }],
+    },
+    {
+      code: "type TodosRepositoryShape = { grantRole(): void } | { findOne(): void };",
       filename: PORT,
       errors: [{ message: /^\[dumb-repository-ports\] Port method "grantRole"/ }],
     },

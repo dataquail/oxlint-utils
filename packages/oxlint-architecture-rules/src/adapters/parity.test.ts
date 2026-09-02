@@ -95,9 +95,9 @@ export { C };
 `,
   },
   {
-    // Every declaration shape a port might take. Only the bare type literal is
-    // read today; the rest are here so that reading them is a change to both
-    // adapters or to neither.
+    // Every declaration shape a port might take — the ones both adapters read,
+    // and the ones both step over, so that reading a new one is a change to
+    // both adapters or to neither.
     file: "parity/type-members.ts",
     code: `
 export type Alias = {
@@ -108,12 +108,17 @@ export type Alias = {
   1: boolean;
   readonly e?: string;
 };
-export interface Iface {
-  hidden(): void;
+export interface Iface extends Alias {
+  own(): void;
+  (call: number): void;
+  new (construct: number): Iface;
 }
 type Base = { fromBase(): void };
 export type Intersected = Base & { fromIntersection(): void };
+export type Union = { fromLeft(): void } | { fromRight(): void };
+export type Nested = Base & ({ fromParens(): void } | Alias);
 export type Generic<T> = { g: T };
+export type Referenced = Base;
 export class K {
   k(): void {}
 }
@@ -319,7 +324,7 @@ describe("the corpus exercises every form", () => {
     expect(called).toEqual(["f", "f", "f", "f", "f", "g"]);
   });
 
-  it("reads the members of a bare type literal alias, and nothing else yet", () => {
+  it("reads the members written in an alias or interface, and follows no reference", () => {
     const declared = facts("parity/type-members.ts")
       .memberSites.filter((site) => site.subject === "type-members")
       .map((site) => `${site.in ?? ""}.${site.name}`);
@@ -328,7 +333,12 @@ describe("the corpus exercises every form", () => {
       "Alias.b",
       "Alias.c-d",
       "Alias.e",
+      "Iface.own",
       "Base.fromBase",
+      "Intersected.fromIntersection",
+      "Union.fromLeft",
+      "Union.fromRight",
+      "Nested.fromParens",
       "Generic.g",
     ]);
   });
