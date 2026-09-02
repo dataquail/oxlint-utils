@@ -1,0 +1,123 @@
+---
+title: Surface
+description: Constraining what a file may export — no default exports, a barrel that only re-exports, a handler that exports one function.
+---
+
+`surface` restricts what a file **offers**: the names it exports, what they were declared as,
+and how many there are. It is the other half of [`exports`](/oxlint-utils/architecture-rules/manifest/exports/),
+which says who may _import_ a name; this says what a file may _export_ in the first place. No
+module resolution is involved, so it is as cheap as `members`.
+
+```js
+"*.handler.ts": {
+  surface: [
+    {
+      message: "A handler exports exactly one function, and nothing else.",
+      declares: ["function"],
+      count: { min: 1, max: 1 },
+    },
+    {
+      message: "A handler's name is camelCase: `{name}` is not.",
+      kinds: ["named"],
+      convention: "camelCase",
+    },
+  ],
+},
+```
+
+Each entry has two halves. The **selectors** say which export sites the sentence is about;
+the **demand** says what is required of them.
+
+| Selector   | Meaning                                                                                                            |
+| ---------- | ------------------------------------------------------------------------------------------------------------------ |
+| `kinds`    | `named`, `default`, `namespace` — the last is `export *` and `export * as`                                         |
+| `declares` | what the site was declared as: `function`, `class`, `variable`, `type`, `interface`, `enum`, `expression`, `other` |
+| `reexport` | `true` speaks only to `export … from "m"`; `false` only to what the file declares                                  |
+| `match`    | exported names the rule is about. Omit to mean every one                                                           |
+| `matchNot` | names carved back out of `match`                                                                                   |
+| `except`   | files under this node the rule does not apply to                                                                   |
+
+| Demand       | Meaning                                                                                            |
+| ------------ | -------------------------------------------------------------------------------------------------- |
+| _(none)_     | **forbid** — any selected site is the violation. `forbid: true` says so explicitly                 |
+| `allow`      | names that are fine; a selected site named otherwise is the violation                              |
+| `convention` | `kebab-case`, `camelCase`, `PascalCase`, `snake_case` or `{ regex }` every selected name must have |
+| `count`      | `{ min, max }` — how many selected sites the file may have                                         |
+
+An entry makes **one** demand. Two demands are two entries, each compiled to its own rule with
+its own probe, so a violation names which one fired.
+
+## What a site is
+
+A site is one name a file offers at its **top level**, in source order:
+
+```ts
+export const a = 1,
+  b = 2; // named a, named b — variable
+export function f() {} // named f — function
+export default class Main {} // default — class
+const local = 1;
+export { local as renamed }; // named renamed — variable (looked up in the file)
+export { Todo } from "./todo.js"; // named Todo — re-export, declares `other`
+export * from "./ids.js"; // namespace * — re-export
+export * as ids from "./ids.js"; // namespace ids — re-export
+```
+
+The name is the **exported** name, not the local one: `export { local as renamed }` is
+`renamed`. A default export is named `default`; `export *` is named `*`. A site declared in
+the file knows what it was declared as; a re-export's declaration is elsewhere, so it reads as
+`other`.
+
+Not surface: an `export` inside a `namespace` body, which is that namespace's; and `export =`,
+which is a CommonJS surface.
+
+## Shapes worth stating
+
+**No default exports.** A default export has no name to grep for, and two files can each call
+theirs something different.
+
+```js
+"src/": {
+  surface: [{ message: "No default exports; a name is greppable.", kinds: ["default"] }],
+},
+```
+
+**A barrel re-exports and declares nothing.** The public surface of a module is what its
+`index.ts` forwards, and a helper declared in the barrel is a helper with no home.
+
+```js
+"index.ts": {
+  surface: [{ message: "A barrel re-exports; `{name}` is declared here.", reexport: false }],
+},
+```
+
+**No `export *`.** A star re-export takes every export of the target at once, and is how a
+name restricted by [`exports`](/oxlint-utils/architecture-rules/manifest/exports/) gets laundered
+through a barrel. That family can forbid it from the import side; this one forbids it where
+it is written, with no resolution needed.
+
+```js
+surface: [{ message: "Re-export by name, so the barrel says what the module is.", kinds: ["namespace"] }],
+```
+
+**A test exports nothing.**
+
+```js
+"*.test.ts": {
+  surface: [{ message: "A test file exports nothing.", count: { max: 0 } }],
+},
+```
+
+## Probes
+
+A `surface` rule's generated [probe](/oxlint-utils/architecture-rules/enforcement/probes/) is a
+whole surface — one site the rule must reject, or for `count`, a surface of the wrong size.
+A `count` with neither `min` nor `max` is refused at load, since nothing could violate it.
+
+An authored probe is a source snippet the rule must report something out of:
+
+```js
+probe: { source: "export default function main() {}" },
+```
+
+Written on a folder, `surface` covers the subtree, like `members`.

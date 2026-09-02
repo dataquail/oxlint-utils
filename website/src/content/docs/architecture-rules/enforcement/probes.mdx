@@ -21,12 +21,13 @@ so it moves when the node moves.
 **The plugin refuses to load if any rule fails its own probe.** Not a warning, not a separate
 script someone remembers to run — a load-time error that stops the lint run.
 
-| Family      | The probe is                                                            |
-| ----------- | ----------------------------------------------------------------------- |
-| `imports`   | a path the rule's `from` must select, importing a target it must refuse |
-| `exports`   | an importer outside `except`, naming a restricted symbol                |
-| `members`   | a file the rule selects, declaring or calling a name it must reject     |
-| `structure` | a filename the layout must reject; for parity, a sibling it must demand |
+| Family      | The probe is                                                                                            |
+| ----------- | ------------------------------------------------------------------------------------------------------- |
+| `imports`   | a path the rule's `from` must select, importing a target it must refuse                                 |
+| `exports`   | an importer outside `except`, naming a restricted symbol                                                |
+| `members`   | a file the rule selects, declaring or calling a name it must reject                                     |
+| `surface`   | a file the rule selects, exporting a site it must reject — or, for `count`, a surface of the wrong size |
+| `structure` | a filename the layout must reject; for parity, a sibling it must demand                                 |
 
 A rule that admits everything by design — the layout rule emitted by
 [`layout: "open"`](/oxlint-utils/architecture-rules/manifest/structure/) — has no path it must
@@ -53,7 +54,7 @@ exist to prevent.
 
 ## Writing the probe yourself
 
-For `members` and `exports`, a rule may carry its own probe: a source snippet and the name
+For `members`, `exports` and `surface`, a rule may carry its own probe: a source snippet and the name
 the rule must report out of it.
 
 ```js

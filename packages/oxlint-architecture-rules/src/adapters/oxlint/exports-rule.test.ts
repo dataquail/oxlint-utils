@@ -59,6 +59,7 @@ const policy = (): LoadedPolicy => {
     exportRules: exportRules.success,
     memberRules: [],
     structure: EMPTY_STRUCTURE,
+    surfaceRules: [],
     fileSystem: makeFileSystemFake([]),
     resolver: makeModuleResolverFake({
       "@effect-server-utils/cqrs": CQRS_BARREL,

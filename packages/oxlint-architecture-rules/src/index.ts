@@ -6,12 +6,19 @@ export {
   type ImportEdge,
 } from "./core/imports.js";
 export {
+  type DeclarationKind,
   type ImportRule,
   type ResolveConfig,
   type ResolveScope,
+  type SurfaceRule,
 } from "./domain/architecture-config.js";
 export { ConfigInvalid, ImportUnresolved, PatternInvalid } from "./domain/architecture-error.js";
-export { type Binding, type MemberSite, type SourceFacts } from "./domain/facts.js";
+export {
+  type Binding,
+  type ExportSite,
+  type MemberSite,
+  type SourceFacts,
+} from "./domain/facts.js";
 export {
   fingerprintOf,
   formatMessage,

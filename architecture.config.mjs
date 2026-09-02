@@ -106,6 +106,22 @@ export default {
       children: {
         "src/": {
           layout: "open",
+          // The plugin entry is the one default export: oxlint reads a plugin
+          // as a module's default. Everything else has a name to grep for.
+          surface: [
+            {
+              message:
+                "No default exports. A default has no name to grep for, and every importer may call it something different.",
+              kinds: ["default"],
+              except: ["@arch/adapters/oxlint/plugin.ts"],
+              probe: { source: "export default function main() {}" },
+            },
+            {
+              message:
+                "Re-export by name, so a barrel says what the module is. `export *` takes every export at once and launders a restricted name through the barrel.",
+              kinds: ["namespace"],
+            },
+          ],
           children: {
             "domain/": {
               message:

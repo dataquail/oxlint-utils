@@ -14,6 +14,7 @@ import {
 import { compileImportRules, evaluateSelectedEdge, rulesSelecting } from "../core/imports.js";
 import { compileMemberRules, evaluateMemberSite, memberRulesSelecting } from "../core/members.js";
 import { EMPTY_STRUCTURE } from "../core/structure.js";
+import { compileSurfaceRules, evaluateSurface, surfaceRulesSelecting } from "../core/surface.js";
 import { formatMessage } from "../domain/violation.js";
 import { factsOfText } from "../infrastructure/fact-extractor-live.js";
 import { makeFileSystemFake } from "../infrastructure/file-system-fake.js";
@@ -22,6 +23,7 @@ import type { LoadedPolicy } from "./oxlint/config-loader.js";
 import { makeExportsRule } from "./oxlint/exports-rule.js";
 import { makeImportsRule } from "./oxlint/imports-rule.js";
 import { makeMembersRule } from "./oxlint/members-rule.js";
+import { makeSurfaceRule } from "./oxlint/surface-rule.js";
 
 RuleTester.describe = describe;
 RuleTester.it = it;
@@ -127,6 +129,30 @@ export type Mapped = { [K in "a"]: string };
 `,
   },
   {
+    // Every way a file can offer a name, and the two forms that are not the
+    // module's surface: an `export` inside a namespace, and `export =`.
+    file: "parity/surface.ts",
+    code: `
+export const a = 1, b = 2;
+export let { c, d: [e] } = { c: 1, d: [2] };
+export function f() {}
+export class C {}
+export type T = string;
+export interface I { x: number }
+export enum E { A }
+export namespace Exported { export const inner = 1; }
+const local = 1;
+type LocalT = number;
+export { local, LocalT as Renamed };
+export type { T as TT };
+export default class Main {}
+export { r1, r2 as r3 } from "reexport-named";
+export * from "reexport-all";
+export * as ns from "reexport-namespace";
+namespace Hidden { export const notSurface = 1; }
+`,
+  },
+  {
     // The same forms parse under the TSX grammar.
     file: "parity/view.tsx",
     code: `
@@ -159,6 +185,14 @@ const config = {
       from: "^parity/",
       to: "^lib/",
       kinds: ["named", "default", "namespace"] as const,
+    },
+  ],
+  surface: [
+    {
+      name: "every-export",
+      message: "export {name}",
+      probe: { from: "parity/surface.ts", sites: [{ name: "a", kind: "named" as const }] },
+      from: "^parity/",
     },
   ],
   members: [
@@ -204,6 +238,7 @@ const policy: LoadedPolicy = {
   importRules: unwrap(compileImportRules(config.imports)),
   exportRules: unwrap(compileExportRules(config.exports)),
   memberRules: unwrap(compileMemberRules(config.members)),
+  surfaceRules: unwrap(compileSurfaceRules(config.surface)),
   structure: EMPTY_STRUCTURE,
   fileSystem: makeFileSystemFake([]),
   resolver,
@@ -240,6 +275,13 @@ const expectedMembers: Expected = (fixture, facts) => {
   return facts.memberSites.flatMap((site) => evaluateMemberSite(selected, site).map(formatMessage));
 };
 
+const expectedSurface: Expected = (fixture, facts) =>
+  evaluateSurface(
+    surfaceRulesSelecting(policy.surfaceRules, fixture.file),
+    fixture.file,
+    facts.exportSites,
+  ).map(formatMessage);
+
 const casesFor = (expected: Expected) => {
   const valid: Array<{ code: string; filename: string }> = [];
   const invalid: Array<{ code: string; filename: string; errors: Array<{ message: string }> }> = [];
@@ -272,6 +314,11 @@ new RuleTester({ cwd: repoRoot }).run(
   "parity: members",
   makeMembersRule(policy),
   casesFor(expectedMembers),
+);
+new RuleTester({ cwd: repoRoot }).run(
+  "parity: surface",
+  makeSurfaceRule(policy),
+  casesFor(expectedSurface),
 );
 
 // The suites above only prove the plugin agrees with the CLI. This pins what
@@ -331,6 +378,32 @@ describe("the corpus exercises every form", () => {
       .memberSites.filter((site) => site.subject === "calls")
       .map((site) => site.name);
     expect(called).toEqual(["f", "f", "f", "f", "f", "g"]);
+  });
+
+  it("reads every export form, top level only", () => {
+    const surface = facts("parity/surface.ts").exportSites.map(
+      (site) => `${site.kind}:${site.name}:${site.declares}${site.reexport ? ":re-export" : ""}`,
+    );
+    expect(surface).toEqual([
+      "named:a:variable",
+      "named:b:variable",
+      "named:c:variable",
+      "named:e:variable",
+      "named:f:function",
+      "named:C:class",
+      "named:T:type",
+      "named:I:interface",
+      "named:E:enum",
+      "named:Exported:other",
+      "named:local:variable",
+      "named:Renamed:type",
+      "named:TT:type",
+      "default:default:class",
+      "named:r1:other:re-export",
+      "named:r3:other:re-export",
+      "namespace:*:other:re-export",
+      "namespace:ns:other:re-export",
+    ]);
   });
 
   it("reads the members written in an alias or interface, and follows no reference", () => {

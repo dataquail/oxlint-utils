@@ -21,7 +21,7 @@ oxlint's JS plugin API is alpha. A policy that only one alpha host can evaluate 
 point of failure, and the policy is the valuable artefact — it should outlive any particular
 way of running it.
 
-The CLI covers **all four families**. Where the plugin reads oxlint's syntax tree, the CLI
+The CLI covers **all five families**. Where the plugin reads oxlint's syntax tree, the CLI
 reads TypeScript's, and the two meet at the same vocabulary — a specifier, a binding, a
 member site — so both answer to the same core rather than to each other. That shared core is
 what makes the second adapter a check on the first rather than a second implementation to
@@ -94,8 +94,8 @@ When a rule seems to be firing too much or not at all, this is the first thing t
 ## `facts`
 
 `explain` says which rules select a file. `facts` says what those rules are evaluated
-against: every edge the parser found, the names carried across each, every declared member
-and every called name.
+against: every edge the parser found, the names carried across each, every declared member,
+every called name, and every export site.
 
 ```
 $ architecture facts packages/server/src/modules/todos/commands/create-todo.handler.ts
@@ -118,6 +118,10 @@ packages/server/src/modules/todos/commands/create-todo.handler.ts
   calls:
     makeCommandHandler
     Effect.gen
+
+  exports:
+    named     createTodo  (variable)
+    named     CreateTodoDeps  (type)
 ```
 
 A rule that "should fire" and does not is one of two mistakes, and this is how to tell them

@@ -164,6 +164,28 @@ describe("loadPolicy", () => {
     ).rejects.toThrow(/contradiction/);
   });
 
+  it("loads a surface rule, and refuses one whose source probe the parser reads nothing from", async () => {
+    const tree = (probe: string) => `tree: {
+      "packages/web/src/": {
+        layout: "open",
+        children: {},
+        surface: [{ message: "No default exports.", kinds: ["default"], probe: ${probe} }],
+      },
+    }`;
+    const loaded = await loadPolicy(
+      repoRoot,
+      writeConfig(`export default { ${RESOLVE}, ${tree('{ source: "export default 1;" }')} };`),
+    );
+    expect(loaded.surfaceRules).toHaveLength(1);
+
+    await expect(
+      loadPolicy(
+        repoRoot,
+        writeConfig(`export default { ${RESOLVE}, ${tree('{ source: "export const x = 1;" }')} };`),
+      ),
+    ).rejects.toThrow(/surface-0/);
+  });
+
   it("compiles the repo's own policy, so this suite fails if that config breaks", async () => {
     const policy = await loadPolicy(repoRoot);
     expect(policy.importRules.length).toBeGreaterThan(0);

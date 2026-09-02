@@ -17,6 +17,7 @@ import { evaluateSelectedBindings, exportRulesSelecting } from "../../core/expor
 import { evaluateSelectedEdge, rulesSelecting } from "../../core/imports.js";
 import { evaluateMemberSite, memberRulesSelecting } from "../../core/members.js";
 import { evaluateStructure, requiredSiblingsOf } from "../../core/structure.js";
+import { evaluateSurface, surfaceRulesSelecting } from "../../core/surface.js";
 import { fingerprintOf, formatMessage, type Violation } from "../../domain/violation.js";
 import { type LoadedPolicy, loadPolicy } from "../oxlint/config-loader.js";
 import { sourceFactsOf } from "./source-facts.js";
@@ -57,9 +58,22 @@ export const collectFindings = (policy: LoadedPolicy, roots: ReadonlyArray<strin
     const selectedImports = rulesSelecting(policy.importRules, file);
     const selectedExports = exportRulesSelecting(policy.exportRules, file);
     const selectedMembers = memberRulesSelecting(policy.memberRules, file);
-    if (selectedImports.length + selectedExports.length + selectedMembers.length === 0) continue;
+    const selectedSurface = surfaceRulesSelecting(policy.surfaceRules, file);
+    if (
+      selectedImports.length +
+        selectedExports.length +
+        selectedMembers.length +
+        selectedSurface.length ===
+      0
+    ) {
+      continue;
+    }
 
     const facts = sourceFactsOf(policy.repoRoot, file);
+
+    for (const violation of evaluateSurface(selectedSurface, file, facts.exportSites)) {
+      violations.push(violation);
+    }
 
     for (const site of facts.memberSites) {
       for (const violation of evaluateMemberSite(selectedMembers, site)) violations.push(violation);
@@ -267,7 +281,11 @@ export const facts = (
 
     if (format === "json") {
       return yield* report([
-        JSON.stringify({ file: relative, edges, memberSites: read.memberSites }, null, 2),
+        JSON.stringify(
+          { file: relative, edges, memberSites: read.memberSites, exportSites: read.exportSites },
+          null,
+          2,
+        ),
       ]);
     }
 
@@ -287,6 +305,12 @@ export const facts = (
       "",
       called.length === 0 ? "  calls: (none)" : "  calls:",
       ...called.map((site) => `    ${site.name}`),
+      "",
+      read.exportSites.length === 0 ? "  exports: (none)" : "  exports:",
+      ...read.exportSites.map(
+        (site) =>
+          `    ${site.kind.padEnd(9)} ${site.name}  (${site.reexport ? "re-export" : site.declares})`,
+      ),
     ]);
   });
 

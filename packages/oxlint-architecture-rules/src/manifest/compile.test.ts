@@ -502,6 +502,59 @@ describe("export restriction kinds", () => {
   });
 });
 
+describe("surface rules", () => {
+  const lowered = (spec: Record<string, unknown>) =>
+    lowerManifest(
+      base({
+        "@/handlers/": {
+          layout: "open",
+          children: {},
+          surface: [spec as never],
+        },
+      }),
+    ).surface[0];
+
+  it("covers the subtree, and defaults to forbid with a probe of one selected site", () => {
+    const rule = lowered({ message: "No default exports.", kinds: ["default"] });
+    expect(new RegExp(rule?.from as string).test("pkg/src/handlers/deep/x.ts")).toBe(true);
+    expect(rule?.probe.sites).toEqual([{ name: "default", kind: "default" }]);
+    expect(rule?.allow).toBeUndefined();
+    expect(rule?.count).toBeUndefined();
+  });
+
+  it("lowers a named convention to its regex, with a name the convention rejects as the probe", () => {
+    const rule = lowered({ message: "camelCase.", convention: "camelCase" });
+    expect(rule?.convention).toBe("^[a-z][a-zA-Z0-9]*$");
+    expect(rule?.probe.sites?.[0]?.name).toBe("zz-probe-stray");
+  });
+
+  it("probes a minimum count with an empty surface, and a maximum with one site too many", () => {
+    expect(lowered({ message: "one", count: { min: 1, max: 1 } })?.probe.sites).toEqual([]);
+    expect(lowered({ message: "two", count: { max: 2 } })?.probe.sites).toHaveLength(3);
+  });
+
+  it("refuses a count nothing can violate", () => {
+    expect(() => lowered({ message: "any", count: {} })).toThrow(/nothing can violate/);
+  });
+
+  it("refuses more than one demand on one entry", () => {
+    expect(() => lowered({ message: "x", allow: ["a"], count: { max: 1 } })).toThrow(/one demand/);
+  });
+
+  it("carries an authored probe's source and `except` as fromNot", () => {
+    const rule = lowered({
+      message: "x",
+      kinds: ["default"],
+      except: ["@/handlers/main.ts"],
+      probe: { source: "export default 1;" },
+    });
+    expect(rule?.probe.source).toBe("export default 1;");
+    const [exempt] = rule?.fromNot ?? [];
+    expect(exempt).toBeDefined();
+    expect(new RegExp(exempt ?? "").test("pkg/src/handlers/main.ts")).toBe(true);
+  });
+});
+
 describe("member rules", () => {
   it("covers the subtree when stated on a folder, as imports does", () => {
     const lowered = lowerManifest(

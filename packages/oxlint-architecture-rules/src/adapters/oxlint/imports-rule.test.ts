@@ -48,6 +48,7 @@ const makePolicy = (): LoadedPolicy => {
     exportRules: [],
     memberRules: [],
     structure: EMPTY_STRUCTURE,
+    surfaceRules: [],
     fileSystem: makeFileSystemFake([]),
     resolver: makeModuleResolverFake({
       "@org/database": "packages/database/src/index.ts",

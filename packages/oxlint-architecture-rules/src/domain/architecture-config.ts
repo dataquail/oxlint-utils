@@ -132,6 +132,66 @@ export const MemberRule = Schema.Struct({
   allow: Schema.optionalKey(PatternList),
 });
 
+// What an exported name was declared as, when it was declared in the file.
+// `expression` is `export default <expr>`; `other` covers a namespace, an
+// `export =`, and a re-export, whose declaration is somewhere else.
+export const DeclarationKind = Schema.Literals([
+  "function",
+  "class",
+  "variable",
+  "type",
+  "interface",
+  "enum",
+  "expression",
+  "other",
+]);
+
+// One export site, as a probe states it: the name (`default` for a default
+// export, `*` for `export *`), its binding kind, and optionally what it was
+// declared as and whether it is a re-export.
+const SurfaceSite = Schema.Struct({
+  name: Schema.String,
+  kind: BindingKind,
+  declares: Schema.optionalKey(DeclarationKind),
+  reexport: Schema.optionalKey(Schema.Boolean),
+});
+
+// A whole surface, because `count` is about the file rather than a site.
+// `source`, when present, is parsed by the loading adapter instead.
+const SurfaceProbe = Schema.Struct({
+  from: Schema.String,
+  sites: Schema.optionalKey(Schema.Array(SurfaceSite)),
+  source: Schema.optionalKey(Schema.String),
+});
+
+// What a file may export. The selectors (`kinds`, `declares`, `reexport`,
+// `match`) say which sites the rule speaks to; exactly one demand says what is
+// required of them. No demand means `forbid`: a selected site is the violation.
+export const SurfaceRule = Schema.Struct({
+  name: Schema.String,
+  message: Schema.String,
+  probe: SurfaceProbe,
+  from: PatternList,
+  fromNot: Schema.optionalKey(PatternList),
+  kinds: Schema.optionalKey(Schema.Array(BindingKind)),
+  declares: Schema.optionalKey(Schema.Array(DeclarationKind)),
+  reexport: Schema.optionalKey(Schema.Boolean),
+  match: Schema.optionalKey(PatternList),
+  matchNot: Schema.optionalKey(PatternList),
+  forbid: Schema.optionalKey(Schema.Boolean),
+  // Names that are fine; a selected site named otherwise is the violation.
+  allow: Schema.optionalKey(PatternList),
+  // A regular-expression source every selected name must match.
+  convention: Schema.optionalKey(Schema.String),
+  // How many selected sites the file may have.
+  count: Schema.optionalKey(
+    Schema.Struct({
+      min: Schema.optionalKey(Schema.Finite),
+      max: Schema.optionalKey(Schema.Finite),
+    }),
+  ),
+});
+
 const PathProbe = Schema.Struct({ path: Schema.String });
 
 // The file taxonomy, as three questions rather than one nested tree.
@@ -207,6 +267,9 @@ export type BindingKind = (typeof BindingKind)["Type"];
 export type MemberRule = (typeof MemberRule)["Type"];
 export type MemberProbe = (typeof MemberProbe)["Type"];
 export type MemberSubject = (typeof MemberSubject)["Type"];
+export type DeclarationKind = (typeof DeclarationKind)["Type"];
+export type SurfaceRule = (typeof SurfaceRule)["Type"];
+export type SurfaceProbe = (typeof SurfaceProbe)["Type"];
 export type StructureConfig = (typeof StructureConfig)["Type"];
 export type StructureRoot = (typeof StructureRoot)["Type"];
 export type StructureFolder = (typeof StructureFolder)["Type"];

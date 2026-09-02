@@ -6,6 +6,7 @@ import type {
   StructureNaming,
   StructureParity,
   StructureRoot,
+  SurfaceRule,
 } from "../domain/architecture-config.js";
 import { anchored, type CaptureIndex, globToRegexSource, prefixed } from "./glob.js";
 import {
@@ -23,6 +24,7 @@ export type LoweredRules = {
   readonly imports: ReadonlyArray<ImportRule>;
   readonly exports: ReadonlyArray<ExportRule>;
   readonly members: ReadonlyArray<MemberRule>;
+  readonly surface: ReadonlyArray<SurfaceRule>;
   readonly structure: {
     readonly roots: ReadonlyArray<StructureRoot>;
     readonly folders: ReadonlyArray<StructureFolder>;
@@ -250,6 +252,7 @@ export const lowerManifest = (manifest: Manifest): LoweredRules => {
   const imports: Array<ImportRule> = [];
   const exports: Array<ExportRule> = [];
   const members: Array<MemberRule> = [];
+  const surface: Array<SurfaceRule> = [];
   const roots: Array<StructureRoot> = [];
   const folders: Array<StructureFolder> = [];
   const parity: Array<StructureParity> = [];
@@ -635,6 +638,94 @@ export const lowerManifest = (manifest: Manifest): LoweredRules => {
       });
     }
 
+    for (const [index, spec] of (node.surface ?? []).entries()) {
+      const ruleName = `${name}/surface-${String(index)}`;
+      const asName = (globs: string | ReadonlyArray<string>) =>
+        globsOf(globs).map((one) =>
+          anchored(
+            globToRegexSource(one, compiled.captures, { declaring: false, nextGroup }).source,
+          ),
+        );
+      const asPath = (glob: string) =>
+        prefixed(
+          globToRegexSource(expandAliases(glob, aliases), compiled.captures, {
+            declaring: false,
+            nextGroup,
+          }).source,
+        );
+
+      const demands = [spec.allow, spec.convention, spec.count].filter(
+        (one) => one !== undefined,
+      ).length;
+      if (demands > 1) {
+        throw new Error(
+          `surface rule "${ruleName}" states more than one of allow, convention and count. ` +
+            `A rule makes one demand; write one entry per demand.`,
+        );
+      }
+
+      const kind = spec.kinds?.[0] ?? "named";
+      const conventionSource =
+        spec.convention === undefined
+          ? undefined
+          : typeof spec.convention === "string"
+            ? CONVENTIONS[spec.convention]?.source
+            : spec.convention.regex;
+
+      // The synthetic probe: one site the rule must reject, or for `count`, a
+      // surface of the wrong size. A count nothing can violate — no minimum, no
+      // maximum — is a rule that never reports, and is refused here.
+      const siteName =
+        kind === "default"
+          ? "default"
+          : kind === "namespace"
+            ? "*"
+            : spec.convention !== undefined
+              ? violatingSampleFor(spec.convention, ruleName)
+              : probeMemberName(spec.match);
+      const oneSite = {
+        name: siteName,
+        kind,
+        ...(spec.declares?.[0] === undefined ? {} : { declares: spec.declares[0] }),
+        ...(spec.reexport === undefined ? {} : { reexport: spec.reexport }),
+      };
+      const probeSites = (): ReadonlyArray<typeof oneSite> => {
+        if (spec.count === undefined) return [oneSite];
+        const min = spec.count.min ?? 0;
+        if (min > 0) return [];
+        if (spec.count.max === undefined) {
+          throw new Error(
+            `surface rule "${ruleName}" states a count with no minimum and no maximum, ` +
+              `which nothing can violate.`,
+          );
+        }
+        return Array.from({ length: spec.count.max + 1 }, (_, i) => ({
+          ...oneSite,
+          name: `${siteName}${String(i)}`,
+        }));
+      };
+
+      surface.push({
+        name: ruleName,
+        message: spec.message,
+        probe:
+          spec.probe === undefined
+            ? { from: scopeProbe, sites: probeSites() }
+            : { from: scopeProbe, source: spec.probe.source },
+        from: scope,
+        ...(spec.except === undefined ? {} : { fromNot: globsOf(spec.except).map(asPath) }),
+        ...(spec.kinds === undefined ? {} : { kinds: [...spec.kinds] }),
+        ...(spec.declares === undefined ? {} : { declares: [...spec.declares] }),
+        ...(spec.reexport === undefined ? {} : { reexport: spec.reexport }),
+        ...(spec.match === undefined ? {} : { match: asName(spec.match) }),
+        ...(spec.matchNot === undefined ? {} : { matchNot: asName(spec.matchNot) }),
+        ...(spec.forbid === undefined ? {} : { forbid: spec.forbid }),
+        ...(spec.allow === undefined ? {} : { allow: asName(spec.allow) }),
+        ...(conventionSource === undefined ? {} : { convention: conventionSource }),
+        ...(spec.count === undefined ? {} : { count: spec.count }),
+      });
+    }
+
     if (node.requires !== undefined && node.requires.length > 0) {
       const exempt = (node.requiresNot ?? []).map(
         (basename) =>
@@ -753,6 +844,7 @@ export const lowerManifest = (manifest: Manifest): LoweredRules => {
     imports,
     exports,
     members,
+    surface,
     structure: { roots, folders, parity, naming: namingRules },
   };
 };

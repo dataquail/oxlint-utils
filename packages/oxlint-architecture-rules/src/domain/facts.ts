@@ -1,4 +1,4 @@
-import type { BindingKind, MemberSubject } from "./architecture-config.js";
+import type { BindingKind, DeclarationKind, MemberSubject } from "./architecture-config.js";
 
 // What a policy can know about one source file, read once. Both adapters
 // produce this vocabulary — the plugin from oxlint's syntax tree, the CLI from
@@ -21,6 +21,18 @@ export type MemberSite = {
   readonly in?: string;
 };
 
+// One name a file offers, at its top level: `default` for a default export,
+// `*` for `export *`, the exported (not the local) name otherwise. `declares`
+// is what it was declared as when the declaration is in this file, and `other`
+// for a re-export, whose declaration is elsewhere.
+export type ExportSite = {
+  readonly file: string;
+  readonly name: string;
+  readonly kind: BindingKind;
+  readonly declares: DeclarationKind;
+  readonly reexport: boolean;
+};
+
 export type SourceFacts = {
   // One entry per import edge, in source order. An edge appears once even if it
   // carries several bindings.
@@ -28,4 +40,6 @@ export type SourceFacts = {
   // The names pulled across each edge, keyed by specifier.
   readonly bindings: ReadonlyMap<string, ReadonlyArray<Binding>>;
   readonly memberSites: ReadonlyArray<MemberSite>;
+  // In source order; a file's whole surface, top-level statements only.
+  readonly exportSites: ReadonlyArray<ExportSite>;
 };

@@ -1,6 +1,7 @@
 import ts from "typescript";
 
-import type { Binding, MemberSite, SourceFacts } from "../domain/facts.js";
+import type { DeclarationKind } from "../domain/architecture-config.js";
+import type { Binding, ExportSite, MemberSite, SourceFacts } from "../domain/facts.js";
 import type { FactExtractor } from "../ports/fact-extractor.js";
 
 // The facts, read out of TypeScript's syntax tree. The plugin reads the same
@@ -151,7 +152,103 @@ export const factsOfText = (file: string, text: string): SourceFacts => {
 
   visit(parsed);
 
-  return { specifiers, bindings, memberSites };
+  return { specifiers, bindings, memberSites, exportSites: exportSitesOf(file, parsed) };
+};
+
+const hasModifier = (node: ts.Node, kind: ts.SyntaxKind): boolean =>
+  ts.canHaveModifiers(node) && (ts.getModifiers(node) ?? []).some((one) => one.kind === kind);
+
+// The names a declaration statement introduces, with what it declares them as.
+// A destructuring pattern introduces names too, but not ones a surface rule
+// judges by declaration kind; they read as `variable` like the rest.
+const declaredNamesOf = (statement: ts.Node): ReadonlyArray<readonly [string, DeclarationKind]> => {
+  if (ts.isFunctionDeclaration(statement)) {
+    return statement.name === undefined ? [] : [[statement.name.text, "function"]];
+  }
+  if (ts.isClassDeclaration(statement)) {
+    return statement.name === undefined ? [] : [[statement.name.text, "class"]];
+  }
+  if (ts.isVariableStatement(statement)) {
+    const names: Array<readonly [string, DeclarationKind]> = [];
+    const collect = (binding: ts.BindingName): void => {
+      if (ts.isIdentifier(binding)) names.push([binding.text, "variable"]);
+      else {
+        for (const element of binding.elements) {
+          if (ts.isBindingElement(element)) collect(element.name);
+        }
+      }
+    };
+    for (const declaration of statement.declarationList.declarations) collect(declaration.name);
+    return names;
+  }
+  if (ts.isTypeAliasDeclaration(statement)) return [[statement.name.text, "type"]];
+  if (ts.isInterfaceDeclaration(statement)) return [[statement.name.text, "interface"]];
+  if (ts.isEnumDeclaration(statement)) return [[statement.name.text, "enum"]];
+  if (ts.isModuleDeclaration(statement) && ts.isIdentifier(statement.name)) {
+    return [[statement.name.text, "other"]];
+  }
+  return [];
+};
+
+// A file's surface: what its top-level statements export, in source order. An
+// `export` inside a namespace body is that namespace's, not the module's.
+const exportSitesOf = (file: string, parsed: ts.SourceFile): ReadonlyArray<ExportSite> => {
+  const locals = new Map<string, DeclarationKind>();
+  for (const statement of parsed.statements) {
+    for (const [name, declares] of declaredNamesOf(statement)) locals.set(name, declares);
+  }
+
+  const sites: Array<ExportSite> = [];
+  const site = (
+    name: string,
+    kind: ExportSite["kind"],
+    declares: DeclarationKind,
+    reexport: boolean,
+  ): void => {
+    sites.push({ file, name, kind, declares, reexport });
+  };
+
+  for (const statement of parsed.statements) {
+    if (ts.isExportDeclaration(statement)) {
+      const reexport = statement.moduleSpecifier !== undefined;
+      const clause = statement.exportClause;
+      if (clause === undefined) site("*", "namespace", "other", true);
+      else if (ts.isNamespaceExport(clause)) site(clause.name.text, "namespace", "other", true);
+      else {
+        for (const element of clause.elements) {
+          const name = nameOf(element.name);
+          if (name === null) continue;
+          const local = nameOf(element.propertyName ?? element.name) ?? name;
+          const declares = reexport ? "other" : (locals.get(local) ?? "other");
+          site(name, name === "default" ? "default" : "named", declares, reexport);
+        }
+      }
+    } else if (ts.isExportAssignment(statement)) {
+      // `export = x` is a CommonJS surface, not a module's.
+      if (statement.isExportEquals === true) continue;
+      const declares = ts.isIdentifier(statement.expression)
+        ? (locals.get(statement.expression.text) ?? "expression")
+        : "expression";
+      site("default", "default", declares, false);
+    } else if (hasModifier(statement, ts.SyntaxKind.ExportKeyword)) {
+      const isDefault = hasModifier(statement, ts.SyntaxKind.DefaultKeyword);
+      const declared = declaredNamesOf(statement);
+      if (isDefault) {
+        // `export default function () {}` has no name to look up.
+        const declares =
+          declared[0]?.[1] ??
+          (ts.isFunctionDeclaration(statement)
+            ? "function"
+            : ts.isClassDeclaration(statement)
+              ? "class"
+              : "other");
+        site("default", "default", declares, false);
+      } else {
+        for (const [name, declares] of declared) site(name, "named", declares, false);
+      }
+    }
+  }
+  return sites;
 };
 
 export const makeFactExtractorLive = (): FactExtractor => ({ factsOf: factsOfText });

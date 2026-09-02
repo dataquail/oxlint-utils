@@ -203,6 +203,17 @@ This is where "naming conventions of exported variables" actually lands — `str
 keeps governing filenames, and `surface.only` reuses the same `Naming` vocabulary for
 identifiers, including `like: "{base}"` for named-after-the-file.
 
+**As landed:** the vocabulary mirrors `members` rather than the sketch above — selectors
+(`kinds`, `declares`, `reexport`, `match`/`matchNot`, `except`) pick the sites; exactly one
+demand (`forbid` by default, `allow`, `convention`, `count`) says what is required of them,
+and a spec naming two demands is refused at lowering. A site's kind reuses `BindingKind`, so
+`export *` is `namespace` from this side as it is from the `exports` side. Top-level
+statements only, in both adapters — the oxlint rule reads `Program.body` directly, which is
+what says "not inside a namespace" without a parent pointer. **Named-after-its-file is
+deferred**: `createTodo` vs `createTodoHandler` vs `CreateTodo` is a team convention, not
+something the tool should guess; `count: 1` + `convention` covers the handler case. Dogfooded
+as "no default export under `src/` except the plugin entry" and "no `export *`".
+
 ---
 
 ## Phase 3 — Graph rules (CLI-only, by design)
@@ -298,7 +309,7 @@ page, and — where the family has one — a rule in the root `architecture.conf
 ```
 Phase 0  facts cmd → parity test (+F3 fix) → fixture probes   [done]
 Phase 1  widen type-members [done] → kinds + export * [done] → dogfood members/exports [done]
-Phase 2  surface family
+Phase 2  surface family   [done]
 Phase 3  graph pass → cycles → orphans → reach
 Phase 4  package.json → tsconfig → type-refs → receiver-aware calls
 Phase 5  unrestricted ceiling → coverage

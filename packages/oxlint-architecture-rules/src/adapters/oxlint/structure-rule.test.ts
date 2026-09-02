@@ -61,6 +61,7 @@ const policy = (present: ReadonlyArray<string>): LoadedPolicy => {
     importRules: [],
     exportRules: [],
     memberRules: [],
+    surfaceRules: [],
     structure: structure.success,
     fileSystem: makeFileSystemFake(present),
     resolver: makeModuleResolverFake({}),

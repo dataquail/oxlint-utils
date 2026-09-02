@@ -30,6 +30,11 @@ import {
   compileStructure,
   structureRulesFailingTheirProbe,
 } from "../../core/structure.js";
+import {
+  type CompiledSurfaceRule,
+  compileSurfaceRules,
+  surfaceRulesFailingTheirProbe,
+} from "../../core/surface.js";
 import { ConfigInvalid } from "../../domain/architecture-error.js";
 import { makeFactExtractorLive } from "../../infrastructure/fact-extractor-live.js";
 import { makeFileSystemLive } from "../../infrastructure/file-system-live.js";
@@ -45,6 +50,7 @@ export type LoadedPolicy = {
   readonly importRules: ReadonlyArray<CompiledImportRule>;
   readonly exportRules: ReadonlyArray<CompiledExportRule>;
   readonly memberRules: ReadonlyArray<CompiledMemberRule>;
+  readonly surfaceRules: ReadonlyArray<CompiledSurfaceRule>;
   readonly structure: CompiledStructure;
   readonly fileSystem: FileSystem;
   // Violations this repository is carrying while it adopts the policy. Applied
@@ -98,6 +104,9 @@ export const loadPolicy = async (
   const memberRules = compileMemberRules(rules.members);
   if (Result.isFailure(memberRules)) throw memberRules.failure;
 
+  const surfaceRules = compileSurfaceRules(rules.surface);
+  if (Result.isFailure(surfaceRules)) throw surfaceRules.failure;
+
   const structure = compileStructure(rules.structure);
   if (Result.isFailure(structure)) throw structure.failure;
 
@@ -109,6 +118,7 @@ export const loadPolicy = async (
     ...rulesFailingTheirProbe(importRules.success),
     ...exportRulesFailingTheirProbe(exportRules.success, extractor),
     ...memberRulesFailingTheirProbe(memberRules.success, extractor),
+    ...surfaceRulesFailingTheirProbe(surfaceRules.success, extractor),
   ]
     .map((rule) => rule.name)
     .concat(structureRulesFailingTheirProbe(structure.success));
@@ -130,6 +140,7 @@ export const loadPolicy = async (
     importRules: importRules.success,
     exportRules: exportRules.success,
     memberRules: memberRules.success,
+    surfaceRules: surfaceRules.success,
     structure: structure.success,
     fileSystem: makeFileSystemLive(repoRoot),
     baseline: makeBaselineFilter(

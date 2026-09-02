@@ -36,6 +36,7 @@ export default defineConfig({
                 { slug: "architecture-rules/manifest/imported-by" },
                 { slug: "architecture-rules/manifest/exports" },
                 { slug: "architecture-rules/manifest/members" },
+                { slug: "architecture-rules/manifest/surface" },
                 { slug: "architecture-rules/manifest/structure" },
                 { slug: "architecture-rules/manifest/inheritance" },
               ],

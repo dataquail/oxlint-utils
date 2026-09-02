@@ -104,6 +104,56 @@ describe("whole-module bindings", () => {
   });
 });
 
+describe("export sites", () => {
+  const surface = (source: string) =>
+    factsFor(source).exportSites.map(
+      (site) => `${site.kind}:${site.name}:${site.declares}${site.reexport ? ":re" : ""}`,
+    );
+
+  it("reads a declaration's exported names with what they were declared as", () => {
+    expect(surface(`export const a = 1, b = 2; export function f() {} export class C {}`)).toEqual([
+      "named:a:variable",
+      "named:b:variable",
+      "named:f:function",
+      "named:C:class",
+    ]);
+  });
+
+  it("names a local export by its exported name, and looks up what it declares", () => {
+    expect(surface(`function f() {} export { f as g, f as default };`)).toEqual([
+      "named:g:function",
+      "default:default:function",
+    ]);
+  });
+
+  it("reads a default export's declaration, or `expression` when it has none", () => {
+    expect(surface(`export default function () {}`)).toEqual(["default:default:function"]);
+    expect(surface(`export default 1 + 1;`)).toEqual(["default:default:expression"]);
+    expect(surface(`const x = 1; export default x;`)).toEqual(["default:default:variable"]);
+  });
+
+  it("reads a re-export as `other`, since its declaration is elsewhere", () => {
+    expect(
+      surface(`export { a, b as c } from "m"; export * from "m"; export * as n from "m";`),
+    ).toEqual([
+      "named:a:other:re",
+      "named:c:other:re",
+      "namespace:*:other:re",
+      "namespace:n:other:re",
+    ]);
+  });
+
+  it("reads the top level only — an export inside a namespace is not the module's", () => {
+    expect(
+      surface(`namespace N { export const inner = 1; } export namespace M { export const y = 2; }`),
+    ).toEqual(["named:M:other"]);
+  });
+
+  it("does not read `export =` — a CommonJS surface", () => {
+    expect(surface(`const x = 1; export = x;`)).toEqual([]);
+  });
+});
+
 describe("member sites", () => {
   it("reads the members of a type alias, and the alias they sit in", () => {
     expect(

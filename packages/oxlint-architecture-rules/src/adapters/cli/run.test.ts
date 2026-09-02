@@ -193,6 +193,8 @@ describe.sequential("facts", () => {
     expect(output).toContain("type-members:");
     expect(output).toContain("ThingRepositoryShape.findOneById");
     expect(output).toContain("calls: (none)");
+    expect(output).toContain("exports:");
+    expect(output).toContain("named     x  (variable)");
   });
 
   it("emits the same facts as JSON", async () => {

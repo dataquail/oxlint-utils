@@ -56,6 +56,7 @@ const policy = (): LoadedPolicy => {
     exportRules: [],
     memberRules: memberRules.success,
     structure: EMPTY_STRUCTURE,
+    surfaceRules: [],
     fileSystem: makeFileSystemFake([]),
     resolver: makeModuleResolverFake({}),
     ignoreUnresolved: [],
