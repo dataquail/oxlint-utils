@@ -252,6 +252,17 @@ Work:
 - Baseline: existing cycles land in the baseline on first run, and the ratchet does what it
   does.
 
+**As landed:** as sketched, with one change of shape — `cycles`, `orphans` and `reach` are
+each an array of named rules rather than one object, since two scopes with different
+messages cost nothing. A cycle's subject is its component as a sorted set (`a ↔ b ↔ c`); a
+reach violation's subject is the target, with the route in the message, so both fingerprints
+survive unrelated edits. Orphans count an importer from anywhere, so a fake imported only by
+a test is not one. Type-only imports are edges. Graph rules are compiled and probed by both
+adapters at load — a `via` covering its own target fails `oxlint` too — and evaluated by the
+CLI alone; the CLI now parses each file once and builds the graph only when a rule needs it.
+Dogfooded as no cycles, no dead modules (three entries), and "the pure tiers reach no live
+implementation and no delivery adapter".
+
 ---
 
 ## Phase 4 — Beyond `.ts`: the workspace as a policy subject
@@ -310,7 +321,7 @@ page, and — where the family has one — a rule in the root `architecture.conf
 Phase 0  facts cmd → parity test (+F3 fix) → fixture probes   [done]
 Phase 1  widen type-members [done] → kinds + export * [done] → dogfood members/exports [done]
 Phase 2  surface family   [done]
-Phase 3  graph pass → cycles → orphans → reach
+Phase 3  graph pass → cycles → orphans → reach   [done]
 Phase 4  package.json → tsconfig → type-refs → receiver-aware calls
 Phase 5  unrestricted ceiling → coverage
 ```

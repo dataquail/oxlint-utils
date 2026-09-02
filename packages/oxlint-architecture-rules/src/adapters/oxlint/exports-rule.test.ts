@@ -7,6 +7,7 @@ import { describe, it } from "vitest";
 
 import { EMPTY_BASELINE, makeBaselineFilter } from "../../core/baseline.js";
 import { compileExportRules } from "../../core/exports.js";
+import { EMPTY_GRAPH_RULES } from "../../core/graph.js";
 import { EMPTY_STRUCTURE } from "../../core/structure.js";
 import { makeFileSystemFake } from "../../infrastructure/file-system-fake.js";
 import { makeModuleResolverFake } from "../../infrastructure/module-resolver-fake.js";
@@ -60,6 +61,7 @@ const policy = (): LoadedPolicy => {
     memberRules: [],
     structure: EMPTY_STRUCTURE,
     surfaceRules: [],
+    graph: EMPTY_GRAPH_RULES,
     fileSystem: makeFileSystemFake([]),
     resolver: makeModuleResolverFake({
       "@effect-server-utils/cqrs": CQRS_BARREL,

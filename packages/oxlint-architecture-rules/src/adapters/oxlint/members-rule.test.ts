@@ -6,6 +6,7 @@ import { RuleTester } from "oxlint/plugins-dev";
 import { describe, it } from "vitest";
 
 import { EMPTY_BASELINE, makeBaselineFilter } from "../../core/baseline.js";
+import { EMPTY_GRAPH_RULES } from "../../core/graph.js";
 import { compileMemberRules } from "../../core/members.js";
 import { EMPTY_STRUCTURE } from "../../core/structure.js";
 import { makeFileSystemFake } from "../../infrastructure/file-system-fake.js";
@@ -57,6 +58,7 @@ const policy = (): LoadedPolicy => {
     memberRules: memberRules.success,
     structure: EMPTY_STRUCTURE,
     surfaceRules: [],
+    graph: EMPTY_GRAPH_RULES,
     fileSystem: makeFileSystemFake([]),
     resolver: makeModuleResolverFake({}),
     ignoreUnresolved: [],

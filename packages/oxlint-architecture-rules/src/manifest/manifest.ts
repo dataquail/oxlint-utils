@@ -197,6 +197,40 @@ const ManifestNodeSchema: Schema.Codec<ManifestNode> = Schema.suspend(() =>
   }),
 );
 
+// Rules about the shape of the whole import graph. Globs, like everything
+// else here, expanded through `aliases`. Evaluated by the CLI only: the plugin
+// sees one file at a time and cannot answer "does anything import this?".
+const GraphCycles = Schema.Struct({
+  name: Schema.String,
+  message: Schema.String,
+  within: Globs,
+  withinNot: Schema.optionalKey(Globs),
+});
+
+const GraphOrphans = Schema.Struct({
+  name: Schema.String,
+  message: Schema.String,
+  within: Globs,
+  withinNot: Schema.optionalKey(Globs),
+  entry: Globs,
+});
+
+const GraphReach = Schema.Struct({
+  name: Schema.String,
+  message: Schema.String,
+  from: Globs,
+  fromNot: Schema.optionalKey(Globs),
+  to: Globs,
+  toNot: Schema.optionalKey(Globs),
+  via: Schema.optionalKey(Globs),
+});
+
+const Graph = Schema.Struct({
+  cycles: Schema.optionalKey(Schema.Array(GraphCycles)),
+  orphans: Schema.optionalKey(Schema.Array(GraphOrphans)),
+  reach: Schema.optionalKey(Schema.Array(GraphReach)),
+});
+
 export const Manifest = Schema.Struct({
   // How an import specifier becomes a file. Every pattern below is matched
   // against a resolved path, so this is what makes the rest of the file mean
@@ -209,6 +243,7 @@ export const Manifest = Schema.Struct({
   // copies and a seventh forgotten.
   deny: Schema.optionalKey(Schema.Array(Denial)),
   exports: Schema.optionalKey(Schema.Array(ExportRestriction)),
+  graph: Schema.optionalKey(Graph),
   // Shorthands expanded in every glob, so a pattern reads the way the repo's own
   // imports do rather than repeating `packages/server/src` on every line.
   aliases: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
@@ -220,6 +255,7 @@ export type ImportsSpec = typeof Imports.Type;
 export type ImportedBySpec = typeof ImportedBy.Type;
 export type MembersSpec = typeof Members.Type;
 export type SurfaceSpec = typeof Surface.Type;
+export type GraphSpec = typeof Graph.Type;
 export type NamingSpec = typeof Naming.Type;
 export type ExportRestriction = typeof ExportRestriction.Type;
 

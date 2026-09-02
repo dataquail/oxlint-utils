@@ -1,3 +1,4 @@
+export { evaluateGraph, type Graph } from "./core/graph.js";
 export {
   type CompiledImportRule,
   compileImportRule,
@@ -7,6 +8,7 @@ export {
 } from "./core/imports.js";
 export {
   type DeclarationKind,
+  type GraphConfig,
   type ImportRule,
   type ResolveConfig,
   type ResolveScope,

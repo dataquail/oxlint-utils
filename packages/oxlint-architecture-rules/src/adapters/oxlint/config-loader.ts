@@ -16,6 +16,11 @@ import {
   exportRulesFailingTheirProbe,
 } from "../../core/exports.js";
 import {
+  type CompiledGraph,
+  compileGraphRules,
+  graphRulesFailingTheirProbe,
+} from "../../core/graph.js";
+import {
   type CompiledImportRule,
   compileImportRules,
   rulesFailingTheirProbe,
@@ -51,6 +56,9 @@ export type LoadedPolicy = {
   readonly exportRules: ReadonlyArray<CompiledExportRule>;
   readonly memberRules: ReadonlyArray<CompiledMemberRule>;
   readonly surfaceRules: ReadonlyArray<CompiledSurfaceRule>;
+  // Evaluated by the CLI only; compiled and probed here so a vacuous one fails
+  // the plugin's load as well.
+  readonly graph: CompiledGraph;
   readonly structure: CompiledStructure;
   readonly fileSystem: FileSystem;
   // Violations this repository is carrying while it adopts the policy. Applied
@@ -107,6 +115,9 @@ export const loadPolicy = async (
   const surfaceRules = compileSurfaceRules(rules.surface);
   if (Result.isFailure(surfaceRules)) throw surfaceRules.failure;
 
+  const graph = compileGraphRules(rules.graph);
+  if (Result.isFailure(graph)) throw graph.failure;
+
   const structure = compileStructure(rules.structure);
   if (Result.isFailure(structure)) throw structure.failure;
 
@@ -121,7 +132,8 @@ export const loadPolicy = async (
     ...surfaceRulesFailingTheirProbe(surfaceRules.success, extractor),
   ]
     .map((rule) => rule.name)
-    .concat(structureRulesFailingTheirProbe(structure.success));
+    .concat(structureRulesFailingTheirProbe(structure.success))
+    .concat(graphRulesFailingTheirProbe(graph.success));
   if (vacuous.length > 0) {
     throw new ConfigInvalid({
       configPath,
@@ -141,6 +153,7 @@ export const loadPolicy = async (
     exportRules: exportRules.success,
     memberRules: memberRules.success,
     surfaceRules: surfaceRules.success,
+    graph: graph.success,
     structure: structure.success,
     fileSystem: makeFileSystemLive(repoRoot),
     baseline: makeBaselineFilter(

@@ -555,6 +555,52 @@ describe("surface rules", () => {
   });
 });
 
+describe("graph rules", () => {
+  const lowered = lowerManifest({
+    ...base({}),
+    graph: {
+      cycles: [{ name: "no-cycles", message: "…", within: "@/**", withinNot: "**/*.test.ts" }],
+      orphans: [{ name: "no-orphans", message: "…", within: "@/**", entry: "@/index.ts" }],
+      reach: [
+        {
+          name: "via-ports",
+          message: "…",
+          from: "@/adapters/**",
+          to: "@/infra/**",
+          via: "@/ports/**",
+        },
+      ],
+    },
+  });
+
+  it("expands aliases in every scope and builds a two-node cycle as the probe", () => {
+    const [rule] = lowered.graph.cycles ?? [];
+    expect(new RegExp(rule?.within[0] ?? "").test("pkg/src/a.ts")).toBe(true);
+    expect(new RegExp(rule?.withinNot?.[0] ?? "").test("pkg/src/a.test.ts")).toBe(true);
+    expect(rule?.probe.edges).toHaveLength(2);
+    expect(rule?.probe.edges[0]?.[0]).toMatch(/^pkg\/src\//);
+  });
+
+  it("probes an orphan rule with a lone file in scope", () => {
+    const [rule] = lowered.graph.orphans ?? [];
+    expect(rule?.probe.edges).toEqual([]);
+    expect(rule?.probe.files?.[0]).toMatch(/^pkg\/src\/.*zz-orphan\.ts$/);
+    expect(new RegExp(rule?.entry[0] ?? "").test("pkg/src/index.ts")).toBe(true);
+  });
+
+  it("probes a reach rule with a direct edge that touches no via", () => {
+    const [rule] = lowered.graph.reach ?? [];
+    const [edge] = rule?.probe.edges ?? [];
+    expect(edge?.[0]).toMatch(/^pkg\/src\/adapters\//);
+    expect(edge?.[1]).toMatch(/^pkg\/src\/infra\//);
+    expect(new RegExp(rule?.via?.[0] ?? "").test("pkg/src/ports/p.ts")).toBe(true);
+  });
+
+  it("lowers to no graph rules when the manifest has no graph section", () => {
+    expect(lowerManifest(base({})).graph).toEqual({ cycles: [], orphans: [], reach: [] });
+  });
+});
+
 describe("member rules", () => {
   it("covers the subtree when stated on a folder, as imports does", () => {
     const lowered = lowerManifest(

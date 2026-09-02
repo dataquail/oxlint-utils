@@ -1,5 +1,6 @@
 import type {
   ExportRule,
+  GraphConfig,
   ImportRule,
   MemberRule,
   StructureFolder,
@@ -25,6 +26,7 @@ export type LoweredRules = {
   readonly exports: ReadonlyArray<ExportRule>;
   readonly members: ReadonlyArray<MemberRule>;
   readonly surface: ReadonlyArray<SurfaceRule>;
+  readonly graph: GraphConfig;
   readonly structure: {
     readonly roots: ReadonlyArray<StructureRoot>;
     readonly folders: ReadonlyArray<StructureFolder>;
@@ -840,11 +842,65 @@ export const lowerManifest = (manifest: Manifest): LoweredRules => {
     });
   }
 
+  // Graph rules pass through with their globs resolved, and a probe built from
+  // the shape each is about: two files importing each other, a file nothing
+  // imports, a direct edge from `from` to `to` that touches no `via`.
+  const asGraphPattern = (glob: string) =>
+    prefixed(
+      globToRegexSource(expandAliases(glob, aliases), {}, { declaring: false, nextGroup: 1 })
+        .source,
+    );
+  const asGraphPatterns = (globs: string | ReadonlyArray<string> | undefined) =>
+    globs === undefined ? undefined : globsOf(globs).map(asGraphPattern);
+  const probeFileIn = (globs: string | ReadonlyArray<string>, leaf: string) =>
+    probePathOf(expandAliases(globsOf(globs)[0] ?? "", aliases), leaf);
+  const graph: GraphConfig = {
+    cycles: (manifest.graph?.cycles ?? []).map((rule) => {
+      const a = probeFileIn(rule.within, "zz-alpha.ts");
+      const b = probeFileIn(rule.within, "zz-beta.ts");
+      return {
+        name: rule.name,
+        message: rule.message,
+        probe: {
+          edges: [
+            [a, b],
+            [b, a],
+          ],
+        },
+        within: globsOf(rule.within).map(asGraphPattern),
+        ...(rule.withinNot === undefined
+          ? {}
+          : { withinNot: asGraphPatterns(rule.withinNot) ?? [] }),
+      };
+    }),
+    orphans: (manifest.graph?.orphans ?? []).map((rule) => ({
+      name: rule.name,
+      message: rule.message,
+      probe: { edges: [], files: [probeFileIn(rule.within, "zz-orphan.ts")] },
+      within: globsOf(rule.within).map(asGraphPattern),
+      ...(rule.withinNot === undefined ? {} : { withinNot: asGraphPatterns(rule.withinNot) ?? [] }),
+      entry: globsOf(rule.entry).map(asGraphPattern),
+    })),
+    reach: (manifest.graph?.reach ?? []).map((rule) => ({
+      name: rule.name,
+      message: rule.message,
+      probe: {
+        edges: [[probeFileIn(rule.from, "zz-origin.ts"), probeFileIn(rule.to, "zz-target.ts")]],
+      },
+      from: globsOf(rule.from).map(asGraphPattern),
+      ...(rule.fromNot === undefined ? {} : { fromNot: asGraphPatterns(rule.fromNot) ?? [] }),
+      to: globsOf(rule.to).map(asGraphPattern),
+      ...(rule.toNot === undefined ? {} : { toNot: asGraphPatterns(rule.toNot) ?? [] }),
+      ...(rule.via === undefined ? {} : { via: asGraphPatterns(rule.via) ?? [] }),
+    })),
+  };
+
   return {
     imports,
     exports,
     members,
     surface,
+    graph,
     structure: { roots, folders, parity, naming: namingRules },
   };
 };

@@ -186,6 +186,26 @@ describe("loadPolicy", () => {
     ).rejects.toThrow(/surface-0/);
   });
 
+  it("compiles and probes graph rules, whichever adapter loads", async () => {
+    const graph = (via: string) => `graph: {
+      reach: [{ name: "via-ports", message: "…", from: "src/adapters/**", to: "src/infra/**", via: "${via}" }],
+    }`;
+    const loaded = await loadPolicy(
+      repoRoot,
+      writeConfig(`export default { ${RESOLVE}, ${graph("src/ports/**")}, tree: {} };`),
+    );
+    expect(loaded.graph.reach).toHaveLength(1);
+
+    // A `via` that covers the target itself: nothing could ever be reached
+    // without passing through it, so the rule enforces nothing.
+    await expect(
+      loadPolicy(
+        repoRoot,
+        writeConfig(`export default { ${RESOLVE}, ${graph("src/infra/**")}, tree: {} };`),
+      ),
+    ).rejects.toThrow(/via-ports/);
+  });
+
   it("compiles the repo's own policy, so this suite fails if that config breaks", async () => {
     const policy = await loadPolicy(repoRoot);
     expect(policy.importRules.length).toBeGreaterThan(0);

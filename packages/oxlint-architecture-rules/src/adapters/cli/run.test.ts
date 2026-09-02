@@ -25,6 +25,9 @@ const repoRoot = path.resolve(here, "../../../.tmp-cli-tests");
 // about this repository's own code.
 const MANIFEST = `export default {
   resolve: { scopes: [{ files: "", tsconfig: "tsconfig.json" }], unresolved: "off" },
+  graph: {
+    cycles: [{ name: "no-cycles", message: "These files import each other.", within: "lib/**" }],
+  },
   exports: [
     {
       name: "no-factories",
@@ -54,6 +57,7 @@ const MANIFEST = `export default {
           ],
         },
         "*.view.tsx": {
+          surface: [{ message: "A view exports nothing named.", kinds: ["named"] }],
           members: [
             {
               message: "\`{name}\` puts state in the View.",
@@ -86,6 +90,9 @@ beforeAll(() => {
     'import { makeBus } from "../lib/bus.ts";\nexport type ThingRepositoryShape = { findOneById: () => void };\nexport const x = makeBus;\n',
   );
   write("src/thing.view.tsx", "export const V = () => useState(0);\n");
+  // graph: two files in lib/ that import each other.
+  write("lib/a.ts", 'import "./b.ts";\nexport const a = 1;\n');
+  write("lib/b.ts", 'import "./a.ts";\nexport const b = 1;\n');
   write("lib/bus.ts", "export const makeBus = 1;\n");
 });
 
@@ -100,9 +107,11 @@ describe("collectFindings", () => {
 
     expect([...new Set(findings.violations.map((one) => one.kind))].sort()).toEqual([
       "export",
+      "graph",
       "import",
       "member",
       "structure",
+      "surface",
     ]);
   });
 
@@ -117,13 +126,15 @@ describe("collectFindings", () => {
         "src/*.repository.ts/members-0",
         "src/*.view.tsx/members-0",
         "src/*.repository.ts/requires",
+        "src/*.view.tsx/surface-0",
+        "no-cycles",
       ]),
     );
   });
 
   it("counts the files it walked", async () => {
     const policy = await loadPolicy(repoRoot);
-    expect(collectFindings(policy, ["src", "lib"]).files).toBe(3);
+    expect(collectFindings(policy, ["src", "lib"]).files).toBe(5);
   });
 });
 
@@ -151,7 +162,7 @@ describe.sequential("check", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     expect(output).toContain("src/thing.repository.ts");
-    expect(output).toContain("3 files, ");
+    expect(output).toContain("5 files, ");
   });
 
   it("refuses to write a baseline when the policy declares nowhere to put one", async () => {

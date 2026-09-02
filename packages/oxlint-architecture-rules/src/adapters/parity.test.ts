@@ -11,6 +11,7 @@ import {
   evaluateSelectedBindings,
   exportRulesSelecting,
 } from "../core/exports.js";
+import { EMPTY_GRAPH_RULES } from "../core/graph.js";
 import { compileImportRules, evaluateSelectedEdge, rulesSelecting } from "../core/imports.js";
 import { compileMemberRules, evaluateMemberSite, memberRulesSelecting } from "../core/members.js";
 import { EMPTY_STRUCTURE } from "../core/structure.js";
@@ -239,6 +240,7 @@ const policy: LoadedPolicy = {
   exportRules: unwrap(compileExportRules(config.exports)),
   memberRules: unwrap(compileMemberRules(config.members)),
   surfaceRules: unwrap(compileSurfaceRules(config.surface)),
+  graph: EMPTY_GRAPH_RULES,
   structure: EMPTY_STRUCTURE,
   fileSystem: makeFileSystemFake([]),
   resolver,

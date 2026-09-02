@@ -192,6 +192,53 @@ export const SurfaceRule = Schema.Struct({
   ),
 });
 
+// A small synthetic graph the rule must report on: the edges, and any files
+// that take part without an edge (an orphan has none).
+const GraphProbe = Schema.Struct({
+  edges: Schema.Array(Schema.Tuple([Schema.String, Schema.String])),
+  files: Schema.optionalKey(Schema.Array(Schema.String)),
+});
+
+// Rules about the shape of the whole import graph, which no single file can
+// answer. The CLI evaluates them; the plugin, which sees one file at a time,
+// compiles and probes them so a vacuous one still fails to load.
+export const GraphCycleRule = Schema.Struct({
+  name: Schema.String,
+  message: Schema.String,
+  probe: GraphProbe,
+  within: PatternList,
+  withinNot: Schema.optionalKey(PatternList),
+});
+
+export const GraphOrphanRule = Schema.Struct({
+  name: Schema.String,
+  message: Schema.String,
+  probe: GraphProbe,
+  within: PatternList,
+  withinNot: Schema.optionalKey(PatternList),
+  // Files that are imported by nothing by design — the program's entry points.
+  entry: PatternList,
+});
+
+export const GraphReachRule = Schema.Struct({
+  name: Schema.String,
+  message: Schema.String,
+  probe: GraphProbe,
+  from: PatternList,
+  fromNot: Schema.optionalKey(PatternList),
+  to: PatternList,
+  toNot: Schema.optionalKey(PatternList),
+  // The tier that was supposed to mediate: a path stepping onto a `via` file is
+  // allowed, so only a path that avoids every `via` is the violation.
+  via: Schema.optionalKey(PatternList),
+});
+
+export const GraphConfig = Schema.Struct({
+  cycles: Schema.optionalKey(Schema.Array(GraphCycleRule)),
+  orphans: Schema.optionalKey(Schema.Array(GraphOrphanRule)),
+  reach: Schema.optionalKey(Schema.Array(GraphReachRule)),
+});
+
 const PathProbe = Schema.Struct({ path: Schema.String });
 
 // The file taxonomy, as three questions rather than one nested tree.
@@ -267,6 +314,11 @@ export type BindingKind = (typeof BindingKind)["Type"];
 export type MemberRule = (typeof MemberRule)["Type"];
 export type MemberProbe = (typeof MemberProbe)["Type"];
 export type MemberSubject = (typeof MemberSubject)["Type"];
+export type GraphProbe = (typeof GraphProbe)["Type"];
+export type GraphCycleRule = (typeof GraphCycleRule)["Type"];
+export type GraphOrphanRule = (typeof GraphOrphanRule)["Type"];
+export type GraphReachRule = (typeof GraphReachRule)["Type"];
+export type GraphConfig = (typeof GraphConfig)["Type"];
 export type DeclarationKind = (typeof DeclarationKind)["Type"];
 export type SurfaceRule = (typeof SurfaceRule)["Type"];
 export type SurfaceProbe = (typeof SurfaceProbe)["Type"];

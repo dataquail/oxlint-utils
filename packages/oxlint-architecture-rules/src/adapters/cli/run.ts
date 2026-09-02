@@ -14,12 +14,15 @@ import {
   unbaselined,
 } from "../../core/baseline.js";
 import { evaluateSelectedBindings, exportRulesSelecting } from "../../core/exports.js";
+import { evaluateGraph, hasGraphRules } from "../../core/graph.js";
 import { evaluateSelectedEdge, rulesSelecting } from "../../core/imports.js";
 import { evaluateMemberSite, memberRulesSelecting } from "../../core/members.js";
 import { evaluateStructure, requiredSiblingsOf } from "../../core/structure.js";
 import { evaluateSurface, surfaceRulesSelecting } from "../../core/surface.js";
+import type { SourceFacts } from "../../domain/facts.js";
 import { fingerprintOf, formatMessage, type Violation } from "../../domain/violation.js";
 import { type LoadedPolicy, loadPolicy } from "../oxlint/config-loader.js";
+import { buildGraph } from "./graph.js";
 import { sourceFactsOf } from "./source-facts.js";
 import { listSourceFiles } from "./source-files.js";
 
@@ -50,6 +53,28 @@ export const collectFindings = (policy: LoadedPolicy, roots: ReadonlyArray<strin
   const violations: Array<Violation> = [];
   const unresolved: Array<string> = [];
 
+  // Each file is parsed at most once, whether the per-file families or the
+  // graph pass asks first.
+  const parsed = new Map<string, SourceFacts>();
+  const factsOf = (file: string): SourceFacts => {
+    const cached = parsed.get(file);
+    if (cached !== undefined) return cached;
+    const facts = sourceFactsOf(policy.repoRoot, file);
+    parsed.set(file, facts);
+    return facts;
+  };
+
+  // The graph is the whole repository resolved at once — the one question no
+  // per-file adapter can ask — and is built only when a rule needs it.
+  if (hasGraphRules(policy.graph)) {
+    for (const violation of evaluateGraph(
+      policy.graph,
+      buildGraph(files, policy.resolver, factsOf),
+    )) {
+      violations.push(violation);
+    }
+  }
+
   for (const file of files) {
     for (const violation of evaluateStructure(policy.structure, policy.fileSystem, file)) {
       violations.push(violation);
@@ -69,7 +94,7 @@ export const collectFindings = (policy: LoadedPolicy, roots: ReadonlyArray<strin
       continue;
     }
 
-    const facts = sourceFactsOf(policy.repoRoot, file);
+    const facts = factsOf(file);
 
     for (const violation of evaluateSurface(selectedSurface, file, facts.exportSites)) {
       violations.push(violation);

@@ -89,6 +89,40 @@ export default {
     },
   ],
 
+  // The shape of the whole graph — evaluated by `architecture check`, which
+  // is the one adapter that sees every file at once.
+  graph: {
+    cycles: [
+      {
+        name: "no-cycles",
+        message:
+          "These files import each other, directly or through others. A cycle is a module boundary that does not exist.",
+        within: "@arch/**",
+        withinNot: "**/*.test.ts",
+      },
+    ],
+    orphans: [
+      {
+        name: "no-dead-modules",
+        message:
+          "Nothing imports this file. A module nothing reaches is either dead, or an entry point this policy has not listed.",
+        within: "@arch/**",
+        withinNot: "**/*.test.ts",
+        entry: ["@arch/index.ts", "@arch/adapters/oxlint/plugin.ts", "@arch/adapters/cli/main.ts"],
+      },
+    ],
+    reach: [
+      {
+        name: "pure-tiers-reach-no-adapter",
+        message:
+          "The pure tiers — domain, ports, core, manifest — reach no live implementation and no delivery adapter, through any number of hops. That is what makes them testable without one.",
+        from: ["@arch/domain/**", "@arch/ports/**", "@arch/core/**", "@arch/manifest/**"],
+        fromNot: "**/*.test.ts",
+        to: ["@arch/infrastructure/*-live.ts", "@arch/adapters/**"],
+      },
+    ],
+  },
+
   tree: {
     "~/oxlint-architecture-rules/": {
       message:
