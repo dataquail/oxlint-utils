@@ -69,7 +69,8 @@ It runs `scripts/first-publish.sh`, which:
    commits, commits, tags, and cuts the GitHub release.
 4. `nx release publish --first-release --registry … --tag …` — publishes, under a dist-tag derived
    from the version it just produced.
-5. Verifies each version actually reached the registry.
+5. Verifies each version actually reached the registry — retrying with backoff, because npm is not
+   read-your-writes and a brand-new name can 404 for a second or two after a successful publish.
 
 Leave `dry_run` on for the first attempt. The dry run prints the tarball, and a first publish is exactly
 when a wrong `files` or `exports` ships permanently — npm will not let you re-publish a version you
