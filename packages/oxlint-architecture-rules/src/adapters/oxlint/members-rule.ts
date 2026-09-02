@@ -36,7 +36,8 @@ type CallNode = ReportableNode & {
     | (ReportableNode & {
         readonly type: string;
         readonly name?: unknown;
-        readonly property?: NamedNode | null;
+        readonly computed?: boolean;
+        readonly property?: (NamedNode & { readonly type: string }) | null;
       })
     | null;
 };
@@ -49,11 +50,18 @@ const nameOf = (node: NamedNode | null | undefined): string | null => {
   return typeof node.value === "string" ? node.value : null;
 };
 
+// The name a call is made by: `f()` and `x.f()` are both `f`. `x[f]()` and
+// `x["f"]()` are not — a computed property is not a name a vocabulary rule can
+// speak about — and neither is a private `x.#f()`. The CLI reads the same
+// three cases out of TypeScript's tree; the parity suite keeps them agreeing.
 const calleeName = (node: CallNode): string | null => {
   const callee = node.callee;
   if (callee === null || callee === undefined) return null;
-  if (typeof callee.name === "string") return callee.name;
-  return nameOf(callee.property);
+  if (callee.type === "Identifier" && typeof callee.name === "string") return callee.name;
+  if (callee.type !== "MemberExpression" || callee.computed === true) return null;
+  const property = callee.property;
+  if (property?.type !== "Identifier") return null;
+  return nameOf(property);
 };
 
 export const makeMembersRule = (policy: LoadedPolicy): OxlintRule => ({

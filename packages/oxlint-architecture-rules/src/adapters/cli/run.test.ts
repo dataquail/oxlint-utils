@@ -7,7 +7,15 @@ import * as Exit from "effect/Exit";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { loadPolicy } from "../oxlint/config-loader.js";
-import { check, type CliFailure, collectFindings, explain, run, writeBaseline } from "./run.js";
+import {
+  check,
+  type CliFailure,
+  collectFindings,
+  explain,
+  facts,
+  run,
+  writeBaseline,
+} from "./run.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../../.tmp-cli-tests");
@@ -173,6 +181,44 @@ describe.sequential("explain", () => {
   });
 });
 
+describe.sequential("facts", () => {
+  it("prints every edge with its bindings, and every declared and called name", async () => {
+    const { output } = await captureReport(
+      facts(await loadPolicy(repoRoot), "src/thing.repository.ts"),
+    );
+
+    expect(output).toContain("edges:");
+    expect(output).toContain("../lib/bus.ts");
+    expect(output).toContain("named     makeBus");
+    expect(output).toContain("type-members:");
+    expect(output).toContain("ThingRepositoryShape.findOneById");
+    expect(output).toContain("calls: (none)");
+  });
+
+  it("emits the same facts as JSON", async () => {
+    const { output } = await captureReport(
+      facts(await loadPolicy(repoRoot), "src/thing.view.tsx", "json"),
+    );
+
+    const parsed = JSON.parse(output) as {
+      file: string;
+      edges: Array<unknown>;
+      memberSites: Array<{ subject: string; name: string }>;
+    };
+    expect(parsed.file).toBe("src/thing.view.tsx");
+    expect(parsed.edges).toEqual([]);
+    expect(parsed.memberSites).toEqual([
+      { file: "src/thing.view.tsx", subject: "calls", name: "useState" },
+    ]);
+  });
+
+  it("fails on a file it cannot read", async () => {
+    const { exit } = await captureReport(facts(await loadPolicy(repoRoot), "src/missing.ts"));
+
+    expect(Exit.isFailure(exit)).toBe(true);
+  });
+});
+
 // `run` is the dispatcher: its job is picking the command and the roots, which
 // is what these assert. The reporting each command does is covered above —
 // Vitest re-patches `process.stdout.write` across an await, so output written
@@ -192,6 +238,18 @@ describe.sequential("run", () => {
 
   it("refuses explain without a file", async () => {
     const { exit } = await captureReport(run(repoRoot, ["explain"]));
+
+    expect(Exit.isFailure(exit)).toBe(true);
+  });
+
+  it("routes facts, with --json anywhere in the arguments", async () => {
+    const { exit } = await captureReport(run(repoRoot, ["facts", "--json", "src/thing.view.tsx"]));
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+  });
+
+  it("refuses facts without a file", async () => {
+    const { exit } = await captureReport(run(repoRoot, ["facts", "--json"]));
 
     expect(Exit.isFailure(exit)).toBe(true);
   });

@@ -70,8 +70,12 @@ const calleeNameOf = (expression: ts.LeftHandSideExpression): string | null => {
   return null;
 };
 
-export const sourceFactsOf = (repoRoot: string, file: string): SourceFacts => {
-  const text = readFileSync(path.join(repoRoot, file), "utf8");
+export const sourceFactsOf = (repoRoot: string, file: string): SourceFacts =>
+  sourceFactsOfText(file, readFileSync(path.join(repoRoot, file), "utf8"));
+
+// The parse alone, for a source that is not on disk — the parity suite feeds
+// both adapters the same snippet and asks whether they read the same facts.
+export const sourceFactsOfText = (file: string, text: string): SourceFacts => {
   const parsed = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, scriptKindOf(file));
 
   const specifiers: Array<string> = [];

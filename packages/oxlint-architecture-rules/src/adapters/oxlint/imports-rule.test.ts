@@ -84,6 +84,24 @@ new RuleTester({ cwd: repoRoot }).run("imports", makeImportsRule(makePolicy()), 
       filename: DOMAIN_FILE,
       errors: [{ message: /^\[domain-isolation\]/ }],
     },
+    // The forms a regex over `import … from` never sees. The CLI adapter has
+    // always read them; the plugin skipping them was a policy that held under
+    // `architecture check` and not under `oxlint`.
+    {
+      code: 'const db = await import("@org/database");',
+      filename: DOMAIN_FILE,
+      errors: [{ message: /^\[domain-isolation\]/ }],
+    },
+    {
+      code: 'const db = require("@org/database");',
+      filename: DOMAIN_FILE,
+      errors: [{ message: /^\[domain-isolation\]/ }],
+    },
+    {
+      code: 'import db = require("@org/database");',
+      filename: DOMAIN_FILE,
+      errors: [{ message: /^\[domain-isolation\]/ }],
+    },
     {
       // The anti-vacuity guard: an import the resolver cannot place must be
       // reported, not skipped, or every rule about that target goes quiet.
