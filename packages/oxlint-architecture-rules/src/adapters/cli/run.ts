@@ -309,6 +309,30 @@ export const explain = (policy: LoadedPolicy, file: string): Effect.Effect<void,
     );
 
     const firstSentence = (message: string) => `${message.split(". ")[0] ?? message}.`;
+    const named = (rule: { readonly name: string; readonly message: string }): string =>
+      `    ${rule.name} — ${firstSentence(rule.message)}`;
+
+    // The families beyond imports and structure: which rules of each speak to
+    // this file at all. What they are evaluated against is `facts`' answer.
+    const restricted = exportRulesSelecting(policy.exportRules, relative).map(([rule]) => rule);
+    const vocabulary = memberRulesSelecting(policy.memberRules, relative);
+    const surface = surfaceRulesSelecting(policy.surfaceRules, relative);
+    const scoped = (rule: { within: ReadonlyArray<RegExp>; withinNot: ReadonlyArray<RegExp> }) =>
+      rule.within.some((pattern) => pattern.test(relative)) &&
+      !rule.withinNot.some((pattern) => pattern.test(relative));
+    const graph = [
+      ...policy.graph.cycles.filter(scoped).map((rule) => `${named(rule)} (cycles)`),
+      ...policy.graph.orphans.filter(scoped).map((rule) => `${named(rule)} (orphans)`),
+      ...policy.graph.reach
+        .filter(
+          (rule) =>
+            rule.from.some((pattern) => pattern.test(relative)) &&
+            !rule.fromNot.some((pattern) => pattern.test(relative)),
+        )
+        .map((rule) => `${named(rule)} (reach)`),
+    ];
+    const section = (title: string, lines: ReadonlyArray<string>): ReadonlyArray<string> =>
+      lines.length === 0 ? [] : ["", title, ...lines];
 
     yield* report([
       relative,
@@ -337,6 +361,10 @@ export const explain = (policy: LoadedPolicy, file: string): Effect.Effect<void,
             ),
           ]),
       ...(owed.length === 0 ? [] : ["  owes:", ...owed.map((one) => `    ${one}`)]),
+      ...section("  may not name (exports):", restricted.map(named)),
+      ...section("  vocabulary (members):", vocabulary.map(named)),
+      ...section("  may export (surface):", surface.map(named)),
+      ...section("  graph:", graph),
     ]);
   });
 

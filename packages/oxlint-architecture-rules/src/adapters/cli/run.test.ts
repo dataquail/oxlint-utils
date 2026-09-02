@@ -186,6 +186,23 @@ describe.sequential("explain", () => {
     expect(output).toContain("src/thing.repository-live.ts");
   });
 
+  it("names the rules of every other family that speak to the file", async () => {
+    const view = (await captureReport(explain(await loadPolicy(repoRoot), "src/thing.view.tsx")))
+      .output;
+    expect(view).toContain("may not name (exports):");
+    expect(view).toContain("no-factories");
+    expect(view).toContain("vocabulary (members):");
+    expect(view).toContain("src/*.view.tsx/members-0");
+    expect(view).toContain("may export (surface):");
+    expect(view).toContain("src/*.view.tsx/surface-0");
+    expect(view).not.toContain("graph:");
+
+    const bus = (await captureReport(explain(await loadPolicy(repoRoot), "lib/bus.ts"))).output;
+    expect(bus).toContain("graph:");
+    expect(bus).toContain("no-cycles");
+    expect(bus).toContain("(cycles)");
+  });
+
   it("says so when no tier above the file states an allowlist", async () => {
     const { output } = await captureReport(explain(await loadPolicy(repoRoot), "lib/bus.ts"));
 

@@ -2,9 +2,9 @@
 
 Oxlint plugins and tooling, published as independent packages.
 
-| Package                                                           | What it does                                                                                                                                                                                       |
-| ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`oxlint-architecture-rules`](packages/oxlint-architecture-rules) | Architecture policy as one manifest of your repository: import boundaries over resolved module paths, restricted export sites, folder taxonomy with sibling parity, and declared-member allowlists |
+| Package                                                           | What it does                                                                                                                                                                                                                                                                                                    |
+| ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`oxlint-architecture-rules`](packages/oxlint-architecture-rules) | Architecture policy as one manifest of your repository: import boundaries over resolved module paths, restricted export sites, what a file may export, folder taxonomy with sibling parity, declared-member allowlists — and, through its CLI, cycles, orphans and transitive reach over the whole import graph |
 
 📖 **[Documentation](https://dataquail.github.io/oxlint-utils)**
 
@@ -33,7 +33,8 @@ pnpm run build:packages   # tsc -b -> build/esm + build/dts
 pnpm run test:packages    # vitest, per package
 pnpm run check:all        # tsc -b, src and tests
 pnpm lint                 # oxlint, type-aware, including this repo's own architecture policy
-pnpm run lint:architecture # the same policy through the CLI, with no linter in the loop
+pnpm run lint:architecture # the same policy through the CLI, plus the graph rules and coverage floors
+pnpm run architecture:coverage # how much of the tree the policy reaches, per family
 pnpm run check:effect     # Effect language-service diagnostics
 
 pnpm run precommit        # lint + test + check across the workspace
@@ -55,7 +56,9 @@ pnpm exec nx affected -t test
 `architecture.config.mjs` at the root is a real policy over `packages/`, enforced by the plugin this
 repository publishes and wired into `.oxlintrc.json`. `pnpm lint` therefore fails on a layering
 violation — a `domain/` file reaching an adapter, a `core/` evaluator reaching a live implementation —
-and the policy doubles as the package's largest test.
+and the policy doubles as the package's largest test. Every family is in it: `pnpm run
+lint:architecture` runs the same policy through the CLI, which adds the graph rules (no cycles, no dead
+modules, the pure tiers reach no adapter) and the coverage floors the policy states for itself.
 
 ## How a package is built
 

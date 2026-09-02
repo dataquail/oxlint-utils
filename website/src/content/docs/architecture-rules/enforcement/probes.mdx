@@ -14,8 +14,8 @@ is dead"_ are the same green check.
 ## Every rule carries a probe
 
 When the manifest is lowered, each compiled rule is given a **probe** generated from its own
-node in the tree: a synthetic path (and for `members` and `exports`, a synthetic name) that
-the rule _must_ reject. The probe is derived from the same glob the rule was compiled from,
+node in the tree: a synthetic path (and for `members`, `exports` and `surface`, a synthetic
+name; for `graph`, a small synthetic graph) that the rule _must_ reject. The probe is derived from the same glob the rule was compiled from,
 so it moves when the node moves.
 
 **The plugin refuses to load if any rule fails its own probe.** Not a warning, not a separate

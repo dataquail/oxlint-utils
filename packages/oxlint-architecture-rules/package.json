@@ -3,7 +3,7 @@
   "version": "0.1.0-beta.0",
   "type": "module",
   "license": "MIT",
-  "description": "Architecture policy as configuration, enforced as one oxlint plugin: import boundaries over resolved module paths, restricted export sites, folder taxonomy with sibling parity, and declared-member allowlists.",
+  "description": "Architecture policy as one manifest of your repository, enforced as one oxlint plugin and one CLI: import boundaries over resolved module paths, restricted export sites, what a file may export, folder taxonomy with sibling parity, declared-member allowlists, and — in the CLI — cycles, orphans and transitive reach over the whole import graph.",
   "author": "zacharyweidenbach",
   "keywords": [
     "oxlint",

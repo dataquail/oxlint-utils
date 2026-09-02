@@ -7,9 +7,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 An Nx + pnpm monorepo publishing oxlint plugins and tooling. Today that is one package:
 
 - **`oxlint-architecture-rules`** (`packages/oxlint-architecture-rules`) — architecture policy written
-  as one manifest of the repository (`architecture.config.mjs`), lowered into four oxlint rules
-  (`imports`, `exports`, `members`, `structure`) plus an `architecture` CLI that evaluates the same
-  policy with no linter in the loop.
+  as one manifest of the repository (`architecture.config.mjs`), lowered into five oxlint rules
+  (`imports`, `exports`, `members`, `surface`, `structure`) plus an `architecture` CLI that evaluates
+  the same policy with no linter in the loop — and, being the one adapter that sees every file at
+  once, the `graph` family (cycles, orphans, transitive reach) and the `limits` ratchets on the
+  policy's own reach.
 
 The package is unscoped on npm, and its directory name matches its published name. `website/` is an
 Astro + Starlight docs site deployed to GitHub Pages at <https://dataquail.github.io/oxlint-utils>.
@@ -18,10 +20,13 @@ Astro + Starlight docs site deployed to GitHub Pages at <https://dataquail.githu
 `architecture.config.mjs` at the root is a real policy over `packages/`, wired into `.oxlintrc.json` as
 the `architecture` JS plugin, so `pnpm lint` fails on a layering violation. That makes the policy the
 package's largest test: a change that breaks lowering or resolution breaks the lint run here first.
-All four families are in it, deliberately — `imports` and `structure` for the layering, `members` for
+Every family is in it, deliberately — `imports` and `structure` for the layering, `members` for
 "`core/` and `domain/` never touch the file system" and "a port member is camelCase", `exports` for
 "a live adapter is constructed only at the composition root" and "no namespace import or `export *`
-between tiers" — so a family whose extraction quietly narrows breaks this lint run, not a user's.
+between tiers", `surface` for "no default exports, no `export *`", `graph` for no cycles, no dead
+modules and "the pure tiers reach no adapter", and `limits` with both adoption ceilings at zero and
+coverage floors at the numbers the day they were written — so a family whose extraction quietly
+narrows breaks this lint run, not a user's.
 
 ## Commands
 
@@ -117,11 +122,14 @@ proves a rule _can_ fire, not that it fires on what you meant.
 
 - `src/domain/` — the manifest schema, the error types, the `Violation` and its line-independent
   fingerprint. No I/O.
-- `src/core/` — the pure evaluators (`imports`, `exports`, `members`, `structure`, `baseline`,
-  `patterns`). Given facts, they return violations; they never read a file.
+- `src/core/` — the pure evaluators (`imports`, `exports`, `members`, `surface`, `structure`, `graph`,
+  `coverage`, `baseline`, `patterns`). Given facts, they return violations; they never read a file.
 - `src/manifest/` — compiling the manifest tree down to flat, resolved rules (`lowerManifest`).
-- `src/ports/` + `src/infrastructure/` — the `FileSystem` and `ModuleResolver` ports, with a live
-  implementation (`unrs-resolver`, `typescript`) and a fake per port. Tests drive the fakes.
+- `src/ports/` + `src/infrastructure/` — the `FileSystem`, `ModuleResolver` and `FactExtractor` ports,
+  with a live implementation (`unrs-resolver`, `typescript`) and a fake per port. Tests drive the fakes.
+  The extractor is the TypeScript parser the CLI reads every file through and the loader parses
+  authored probes with; the plugin reads oxlint's tree instead, and `src/adapters/parity.test.ts`
+  holds the two to one answer.
 - `src/adapters/oxlint/` and `src/adapters/cli/` — the two delivery mechanisms. Both answer to the same
   core, deliberately, so an alpha oxlint plugin API is not a single point of failure.
 
@@ -129,9 +137,14 @@ Two properties are load-bearing and pinned by tests:
 
 - **Every compiled rule carries a probe** generated from its own node path, and the plugin **refuses to
   load** if any probe fails. A rule that has drifted into matching nothing is a load-time error, not
-  something a separate script might notice later.
+  something a separate script might notice later. A `members`, `exports` or `surface` rule may carry
+  an authored `probe: { source }` instead, parsed at load — the only way to prove a rule fires on a
+  declaration shape, since a synthetic probe never meets a parser.
 - **The baseline is a ratchet, not a suppression list.** Entries are keyed by fingerprint, and fixing a
   violation fails the build until its entry is removed, so the floor only rises.
+- **The graph family is CLI-only, by design.** The plugin sees one file at a time; `architecture check`
+  builds the import graph (parsing each file once) and is a superset of the plugin, not a mirror.
+  Both adapters compile and probe graph rules at load, so a vacuous one fails `oxlint` too.
 
 ## Releasing
 
