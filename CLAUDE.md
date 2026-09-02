@@ -72,14 +72,14 @@ policy while still linting green. Two things close that: the `lint` script build
 other way.
 
 **`tsconfig.resolve.json` is not part of any build.** It exists so the architecture plugin can resolve
-specifiers, and it mirrors `tsconfig.base.json`'s `paths` *without* the trailing extension those carry —
+specifiers, and it mirrors `tsconfig.base.json`'s `paths` _without_ the trailing extension those carry —
 a mapped target is a template, so a `.ts`-suffixed mapping would make `pkg/x.js` look for `x.js.ts`.
 Changing `paths` in one file and not the other is how rules silently stop resolving.
 
 **Adding a layer means adding a node to `architecture.config.mjs`.** A new folder under `src/` that no
 node governs trips the taxonomy-root catch-all rather than being quietly unpoliced. Before trusting a
 rule you just wrote, plant the violation it exists to catch and watch `pnpm lint` fail — the probe check
-proves a rule *can* fire, not that it fires on what you meant.
+proves a rule _can_ fire, not that it fires on what you meant.
 
 **Imports use explicit `.js` extensions.** `moduleResolution` is `NodeNext` and the package is ESM —
 `import { x } from "./thing.js"` referring to `thing.ts` is correct, not a mistake to "fix".
@@ -132,3 +132,23 @@ Two properties are load-bearing and pinned by tests:
 `nx release` with `projectsRelationship: "independent"`. Push to `main` → version + tag + GitHub
 release; creating that release triggers the npm publish from `packages/<name>` (not a `dist/`
 subdirectory — the manifest's `files` is what narrows the tarball). See `RELEASE.md`.
+
+**A package that has never been released does not go through that path.** It has no git tag and no
+registry version to derive from, so it is bootstrapped by the **First Publish** workflow
+(`workflow_dispatch` → `scripts/first-publish.sh`), which passes nx's `--first-release` and refuses any
+package that is already on the registry. After that one run the package is normal.
+
+**`--preid` is passed once, on the first publish, and never again.** Once a package's current version
+is a prerelease, nx resolves every subsequent bump as `prerelease` on its own, so the ordinary flow
+keeps cutting betas with no flag anywhere. Leaving beta is therefore a deliberate
+`nx release minor` — there is nothing to unset — which is the property you want from a "not ready yet"
+state. Don't add a preid to `on-push.yml` trying to make betas stick; they already do.
+
+**The npm dist-tag is derived from the version, not configured** (`scripts/dist-tag.mjs`, used by both
+publish scripts). npm applies `latest` to whatever it is given unless `--tag` says otherwise and never
+looks at the version, so an untagged beta becomes what `npm install` resolves to — which is exactly
+what happened to `@effect-server-utils/cqrs` (`latest -> 0.1.0-beta.4`).
+
+**`.npmrc` sets `provenance=true` unconditionally, and npm errors rather than degrades without a
+trusted CI to attest from.** Any publish outside Actions — including a Verdaccio rehearsal — needs
+`NPM_CONFIG_PROVENANCE=false`, and gives up the attestation to get it.

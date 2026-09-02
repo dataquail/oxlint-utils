@@ -40,7 +40,8 @@
     "prepare": "husky && effect-tsgo patch --oxlint",
     "inject-token": "bash .devcontainer/inject-token.sh",
     "devpod:up": "pnpm run inject-token && bash -c 'devpod up . --id=\"$1\"' --",
-    "devpod:delete": "bash -c 'devpod delete \"$1\"' --"
+    "devpod:delete": "bash -c 'devpod delete \"$1\"' --",
+    "local-registry": "nx local-registry"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.8.0",
@@ -72,11 +73,9 @@
     "includedScripts": [],
     "targets": {
       "local-registry": {
-        "executor": "@nx/js:verdaccio",
+        "executor": "nx:run-commands",
         "options": {
-          "port": 4873,
-          "config": ".verdaccio/config.yml",
-          "storage": "tmp/local-registry/storage"
+          "command": "verdaccio --config .verdaccio/config.yml --listen 4873"
         }
       }
     }

@@ -28,21 +28,78 @@ pnpm build:packages
 # Scoping each run to the package its own release named is what makes them
 # independent. `PACKAGE_NAME` comes from the release tag; absent it (a manual
 # dispatch) publish everything, which is the only case where that is wanted.
-PROJECT_ARGS=()
 if [ -n "${PACKAGE_NAME:-}" ]; then
   echo "Publishing ${PACKAGE_NAME}, the package this release is for..."
-  PROJECT_ARGS=(--projects="$PACKAGE_NAME")
 else
   echo "No release tag in the environment — publishing every package..."
+fi
+
+# A package that is not on the registry yet has no version for nx to compare
+# against, so `nx release publish` runs an `npm view` that 404s. Nx does tolerate
+# that 404 — but by matching the words "not found" in npm's error prose, which is
+# exactly the kind of check that breaks the day npm rewords an error. Since we
+# can just ask the registry ourselves, tell nx up front that this is a first
+# release and let it skip the lookup entirely.
+#
+# Only meaningful when this run is scoped to one package; a bare dispatch that
+# publishes everything is not a first release of anything.
+FIRST_RELEASE_ARGS=()
+if [ -n "${PACKAGE_NAME:-}" ] && ! npm view "$PACKAGE_NAME" version >/dev/null 2>&1; then
+  echo "${PACKAGE_NAME} is not on the registry yet — publishing it for the first time."
+  FIRST_RELEASE_ARGS=(--first-release)
+fi
+
+# npm applies `latest` to whatever it publishes unless `--tag` says otherwise —
+# it does not look at the version. Left alone, a 0.1.0-beta.5 becomes the version
+# `npm install <pkg>` hands out, which is the opposite of what a beta is for.
+# (This is not hypothetical: @effect-server-utils/cqrs, in the repo this
+# workspace was modelled on, carries `latest -> 0.1.0-beta.4` for this reason.)
+#
+# The tag belongs to the version, so it is derived per package rather than
+# configured. `--tag` is one value for the whole nx invocation, so the publish
+# runs once per package — which is a loop of one on the normal release-triggered
+# path, and the only correct shape on a bare dispatch where two packages can sit
+# at different prerelease states.
+TO_PUBLISH=()
+if [ -n "${PACKAGE_NAME:-}" ]; then
+  TO_PUBLISH=("$PACKAGE_NAME")
+else
+  for manifest in packages/*/package.json; do
+    [ -f "$manifest" ] || continue
+    TO_PUBLISH+=("$(node -p "JSON.parse(require('fs').readFileSync('$manifest','utf8')).name")")
+  done
 fi
 
 PUBLISH_LOG=$(mktemp)
 trap 'rm -f "$PUBLISH_LOG"' EXIT
 
-set +e
-npx nx release publish --verbose "${PROJECT_ARGS[@]}" 2>&1 | tee "$PUBLISH_LOG"
-PUBLISH_EXIT=${PIPESTATUS[0]}
-set -e
+PUBLISH_EXIT=0
+for name in "${TO_PUBLISH[@]}"; do
+  directory=""
+  for manifest in packages/*/package.json; do
+    [ -f "$manifest" ] || continue
+    if [ "$(node -p "JSON.parse(require('fs').readFileSync('$manifest','utf8')).name")" = "$name" ]; then
+      directory=$(dirname "$manifest")
+      break
+    fi
+  done
+
+  if [ -z "$directory" ]; then
+    echo "❌ $name is not a package in this workspace." >&2
+    PUBLISH_EXIT=1
+    continue
+  fi
+
+  version=$(node -p "JSON.parse(require('fs').readFileSync('$directory/package.json','utf8')).version")
+  dist_tag=$(node scripts/dist-tag.mjs "$version")
+  echo "Publishing $name@$version under dist-tag \"$dist_tag\"..."
+
+  set +e
+  npx nx release publish --verbose --projects="$name" --tag "$dist_tag" "${FIRST_RELEASE_ARGS[@]}" 2>&1 | tee -a "$PUBLISH_LOG"
+  one_exit=${PIPESTATUS[0]}
+  set -e
+  [ "$one_exit" -ne 0 ] && PUBLISH_EXIT=$one_exit
+done
 
 # The registry is the source of truth for whether this worked, not the exit
 # code — because npm cannot tell you which kind of failure you had.
@@ -93,6 +150,15 @@ fi
 echo
 echo "❌ Publish failed — these versions did not reach the registry:"
 printf '   - %s\n' "${MISSING[@]}"
+
+if grep -qiE "E403|forbidden" "$PUBLISH_LOG" && [ -n "${FIRST_RELEASE_ARGS:-}" ]; then
+  echo
+  echo "   npm refused a package name that does not exist yet. The usual cause"
+  echo "   is the token: a granular access token restricted to selected packages"
+  echo "   cannot CREATE one, only publish over names it already lists."
+  echo "   Fix: use a token scoped to the whole account/org, or a classic"
+  echo "   Automation token, for the first publish of a new package."
+fi
 
 if grep -qiE "EOTP|one-time password" "$PUBLISH_LOG"; then
   echo
