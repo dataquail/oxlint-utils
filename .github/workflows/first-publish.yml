@@ -18,6 +18,10 @@ on:
         description: "Package names to publish, comma- or space-separated (e.g. oxlint-architecture-rules)"
         required: true
         type: string
+      preid:
+        description: "Prerelease identifier for the first version — beta gives 0.1.0-beta.0 and the beta dist-tag. Clear it to publish a stable 0.1.0 on latest."
+        type: string
+        default: beta
       dry_run:
         description: "Dry run — print the plan and the tarball contents, publish nothing"
         type: boolean
@@ -84,6 +88,7 @@ jobs:
         env:
           PACKAGES: ${{ inputs.packages }}
           DRY_RUN: ${{ inputs.dry_run }}
+          PREID: ${{ inputs.preid }}
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           # Only meaningful in a trusted CI environment, which is the reason a
@@ -101,5 +106,6 @@ jobs:
             echo "| --- | --- |"
             echo "| Packages | \`${{ inputs.packages }}\` |"
             echo "| Mode | ${{ inputs.dry_run == true && 'dry run — nothing published' || 'live publish' }} |"
+            echo "| Preid | ${{ inputs.preid == '' && 'none — stable release on latest' || inputs.preid }} |"
             echo "| Result | ${{ job.status }} |"
           } >> "$GITHUB_STEP_SUMMARY"

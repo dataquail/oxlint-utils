@@ -17,12 +17,15 @@
 #   PACKAGES   required. Package names, comma- or whitespace-separated.
 #   DRY_RUN    "true" (default) prints the plan and the tarball contents without
 #              publishing. Anything else publishes for real.
+#   PREID      prerelease identifier for the first version — "beta" gives
+#              0.1.0-beta.0 instead of 0.1.0. Empty publishes a stable version.
 #   REGISTRY   defaults to https://registry.npmjs.org
 
 set -euo pipefail
 
 REGISTRY="${REGISTRY:-https://registry.npmjs.org}"
 DRY_RUN="${DRY_RUN:-true}"
+PREID="${PREID:-}"
 
 if [ -z "${PACKAGES:-}" ]; then
   echo "❌ PACKAGES is required — name at least one package to publish." >&2
@@ -153,7 +156,21 @@ echo
 # `--skip-publish` already answers the publish prompt, and nx rejects it
 # alongside `--yes` as mutually exclusive.
 RELEASE_ARGS=(release --first-release --projects="$JOINED" --skip-publish)
-PUBLISH_ARGS=(release publish --first-release --projects="$JOINED" --registry "$REGISTRY")
+
+# `--preid` turns the specifier conventional commits resolved into its
+# prerelease equivalent: minor becomes preminor, so 0.0.0 becomes 0.1.0-beta.0
+# rather than 0.1.0.
+#
+# It is only needed HERE, for the first version. Once a package's current
+# version is a prerelease, nx resolves every subsequent bump as "prerelease"
+# on its own — so the ordinary push-to-main flow keeps cutting betas with no
+# flag anywhere, until someone deliberately releases a stable version.
+if [ -n "$PREID" ]; then
+  echo "Prerelease: first version will carry the preid \"$PREID\"."
+  echo "Every release after this one stays on the prerelease track automatically."
+  echo
+  RELEASE_ARGS+=(--preid "$PREID")
+fi
 
 if [ "$DRY_RUN" = "true" ]; then
   echo "🔍 Dry run — no version bump, no tag, no release, no publish."
@@ -161,14 +178,36 @@ if [ "$DRY_RUN" = "true" ]; then
   echo "   \`files\` or \`exports\` ships permanently."
   echo
   RELEASE_ARGS+=(--dry-run)
-  PUBLISH_ARGS+=(--dry-run)
 fi
 
 echo "Versioning and tagging ${JOINED}..."
 pnpm exec nx "${RELEASE_ARGS[@]}"
 echo
 
-echo "Publishing ${JOINED} to ${REGISTRY}..."
+# The dist-tag has to follow the version that versioning just produced, so it is
+# resolved here rather than passed in. A prerelease published under `latest` is
+# the version `npm install` hands out, which would defeat the point of the preid
+# above. In a dry run nothing was written, so derive it from the version the
+# release WOULD have produced by asking for the same bump.
+FIRST_TARGET="${TARGETS[0]}"
+FIRST_DIR=$(directory_of "$FIRST_TARGET")
+NEW_VERSION=$(node -p "JSON.parse(require('fs').readFileSync('$FIRST_DIR/package.json','utf8')).version")
+
+if [ "$DRY_RUN" = "true" ] && [ -n "$PREID" ]; then
+  # Nothing was written to disk, so the on-disk version is still the pre-bump
+  # one. Name the tag the preid asks for; the real run derives it from the
+  # version that was actually written.
+  DIST_TAG="$PREID"
+else
+  DIST_TAG=$(node scripts/dist-tag.mjs "$NEW_VERSION")
+fi
+
+PUBLISH_ARGS=(release publish --first-release --projects="$JOINED" --registry "$REGISTRY" --tag "$DIST_TAG")
+if [ "$DRY_RUN" = "true" ]; then
+  PUBLISH_ARGS+=(--dry-run)
+fi
+
+echo "Publishing ${JOINED} to ${REGISTRY} under dist-tag \"${DIST_TAG}\"..."
 pnpm exec nx "${PUBLISH_ARGS[@]}"
 
 if [ "$DRY_RUN" = "true" ]; then
@@ -215,3 +254,12 @@ echo
 echo "✅ First publish complete. Subsequent releases go through the normal flow:"
 echo "   a conventional commit on main versions and tags the package, and"
 echo "   creating that GitHub release publishes it."
+
+if [ -n "$PREID" ]; then
+  echo
+  echo "   This was a ${PREID} release, published under the \"${DIST_TAG}\" dist-tag —"
+  echo "   \`npm install\` still resolves to nothing until a stable version exists."
+  echo "   Every release from here stays on the ${PREID} track by itself. When the"
+  echo "   library is ready, cut the stable one deliberately:"
+  echo "     pnpm exec nx release minor --projects=${JOINED}"
+fi

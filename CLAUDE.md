@@ -138,6 +138,17 @@ registry version to derive from, so it is bootstrapped by the **First Publish** 
 (`workflow_dispatch` → `scripts/first-publish.sh`), which passes nx's `--first-release` and refuses any
 package that is already on the registry. After that one run the package is normal.
 
+**`--preid` is passed once, on the first publish, and never again.** Once a package's current version
+is a prerelease, nx resolves every subsequent bump as `prerelease` on its own, so the ordinary flow
+keeps cutting betas with no flag anywhere. Leaving beta is therefore a deliberate
+`nx release minor` — there is nothing to unset — which is the property you want from a "not ready yet"
+state. Don't add a preid to `on-push.yml` trying to make betas stick; they already do.
+
+**The npm dist-tag is derived from the version, not configured** (`scripts/dist-tag.mjs`, used by both
+publish scripts). npm applies `latest` to whatever it is given unless `--tag` says otherwise and never
+looks at the version, so an untagged beta becomes what `npm install` resolves to — which is exactly
+what happened to `@effect-server-utils/cqrs` (`latest -> 0.1.0-beta.4`).
+
 **`.npmrc` sets `provenance=true` unconditionally, and npm errors rather than degrades without a
 trusted CI to attest from.** Any publish outside Actions — including a Verdaccio rehearsal — needs
 `NPM_CONFIG_PROVENANCE=false`, and gives up the attestation to get it.

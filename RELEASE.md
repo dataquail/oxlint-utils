@@ -56,6 +56,7 @@ derive from. Run the **First Publish** workflow (`workflow_dispatch`) instead:
 | Input      | Meaning                                                                         |
 | ---------- | ------------------------------------------------------------------------------- |
 | `packages` | package names, comma- or space-separated — `oxlint-architecture-rules`          |
+| `preid`    | prerelease identifier, `beta` by default: `0.1.0-beta.0` rather than `0.1.0`    |
 | `dry_run`  | checked by default: prints the plan and the tarball contents, publishes nothing |
 
 It runs `scripts/first-publish.sh`, which:
@@ -66,7 +67,8 @@ It runs `scripts/first-publish.sh`, which:
 2. Builds the named packages.
 3. `nx release --first-release --skip-publish` — bumps from the version on disk using conventional
    commits, commits, tags, and cuts the GitHub release.
-4. `nx release publish --first-release --registry …` — publishes.
+4. `nx release publish --first-release --registry … --tag …` — publishes, under a dist-tag derived
+   from the version it just produced.
 5. Verifies each version actually reached the registry.
 
 Leave `dry_run` on for the first attempt. The dry run prints the tarball, and a first publish is exactly
@@ -79,6 +81,43 @@ else, and a first publish is precisely when nobody would notice.
 
 After it succeeds the package is a normal one: the next conventional commit on `main` versions it
 through the usual flow.
+
+### Releasing as a beta
+
+A library that is not ironed out yet should not be what `npm install <pkg>` hands people. Leave `preid`
+at `beta` on the first publish and the rest follows on its own.
+
+**The preid is only needed once.** Once a package's current version is a prerelease, nx resolves every
+subsequent bump as `prerelease` regardless of what conventional commits said — so the ordinary
+push-to-main flow keeps cutting betas with no flag anywhere:
+
+| Step                                                  | Version        | `latest`       | `beta`         |
+| ----------------------------------------------------- | -------------- | -------------- | -------------- |
+| First Publish, `preid: beta`                          | `0.1.0-beta.0` | `0.1.0-beta.0` | `0.1.0-beta.0` |
+| `fix:` on main — ordinary flow, no flags              | `0.1.0-beta.1` | `0.1.0-beta.0` | `0.1.0-beta.1` |
+| `pnpm exec nx release minor` — graduating, on purpose | `0.1.0`        | **`0.1.0`**    | `0.1.0-beta.1` |
+| `feat:` cut as a beta again afterwards                | `0.2.0-beta.0` | `0.1.0`        | `0.2.0-beta.0` |
+
+Two things are worth reading off that table.
+
+**Leaving beta is an explicit act, and the only one.** There is no flag to unset and no config to
+revert — betas continue until someone runs `nx release minor`, or names an exact version, on purpose.
+That is the property you want from a "not ready yet" state.
+
+**Betas do not take the `latest` dist-tag.** npm applies `latest` to whatever you publish unless
+`--tag` says otherwise; it does not look at the version. So a beta published untagged becomes the
+version `npm install` resolves to. `scripts/dist-tag.mjs` derives the tag from the version instead
+(`0.1.0-beta.3` → `beta`, `1.0.0` → `latest`), and both publish scripts use it. Deriving rather than
+configuring is what makes the graduation row work with nothing to remember.
+
+The one exception is a package's very first version: a registry with no `latest` at all assigns one on
+first publish, so `latest` and `beta` both point at `0.1.0-beta.0` in row one. There is no stable
+version for `latest` to mean yet, so that is the right answer rather than a leak — and from the moment
+a stable version exists, no beta takes `latest` again.
+
+> Not a hypothetical failure mode: `@effect-server-utils/cqrs`, in the repository this workspace was
+> modelled on, carries `latest -> 0.1.0-beta.4`. Every automated publish there went out untagged, so
+> `npm install @effect-server-utils/cqrs` installs a beta.
 
 ### If npm returns E403 on a name that does not exist
 
