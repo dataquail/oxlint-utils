@@ -112,8 +112,10 @@ for requested in "${REQUESTED[@]}"; do
   if git tag --list "${requested}@*" | grep -q .; then
     existing=$(git tag --list "${requested}@*" | tr '\n' ' ')
     echo "  ❌ $requested — release tags already exist: $existing"
-    echo "     It was versioned before but never reached the registry. Publish the"
-    echo "     existing version instead:"
+    echo "     It was versioned and released before but never reached the registry,"
+    echo "     so the version already exists and must not be cut again. Publish the"
+    echo "     one that is already tagged instead — re-run the failed **Publish**"
+    echo "     workflow for that release, or dispatch it manually. Locally:"
     echo "       pnpm exec nx release publish --first-release --projects=$requested"
     FAILED=1
     continue
@@ -208,7 +210,16 @@ if [ "$DRY_RUN" = "true" ]; then
 fi
 
 echo "Publishing ${JOINED} to ${REGISTRY} under dist-tag \"${DIST_TAG}\"..."
+
+# Deliberately NOT allowed to abort the script. The registry check below is what
+# decides whether this worked, and it carries the diagnosis for the failure this
+# step is most likely to hit — an E403 on a name that does not exist yet. Under
+# `set -e` that diagnosis was unreachable from the one failure it was written
+# for, which is exactly how it behaved on the first live run of this script.
+set +e
 pnpm exec nx "${PUBLISH_ARGS[@]}"
+PUBLISH_EXIT=$?
+set -e
 
 if [ "$DRY_RUN" = "true" ]; then
   echo
@@ -237,6 +248,12 @@ for target in "${TARGETS[@]}"; do
     MISSING+=("$target@$version")
   fi
 done
+
+if [ ${#MISSING[@]} -eq 0 ] && [ "$PUBLISH_EXIT" -ne 0 ]; then
+  echo
+  echo "⚠️  nx exited $PUBLISH_EXIT, but every version this run was responsible for"
+  echo "   is on the registry — most likely it was already published."
+fi
 
 if [ ${#MISSING[@]} -ne 0 ]; then
   echo
