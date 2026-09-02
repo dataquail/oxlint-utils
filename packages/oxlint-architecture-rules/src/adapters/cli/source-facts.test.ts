@@ -86,6 +86,24 @@ describe("bindings", () => {
   });
 });
 
+describe("whole-module bindings", () => {
+  const whole = [{ symbol: "*", kind: "namespace" }];
+
+  it.each([
+    ['export * from "m";', "export *"],
+    ['export * as ns from "m";', "export * as"],
+    ['import x = require("m");', "import ="],
+    ['const m = await import("m");', "import()"],
+    ['const m = require("m");', "require()"],
+  ])("%s carries the whole module, as `import * as` does", (source) => {
+    expect(factsFor(source).bindings.get("m")).toEqual(whole);
+  });
+
+  it("a side-effect import carries nothing", () => {
+    expect(factsFor('import "m";').bindings.get("m")).toEqual([]);
+  });
+});
+
 describe("member sites", () => {
   it("reads the members of a type alias, and the alias they sit in", () => {
     expect(

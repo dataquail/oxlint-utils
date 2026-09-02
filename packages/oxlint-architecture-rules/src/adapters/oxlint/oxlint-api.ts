@@ -23,3 +23,44 @@ export const specifierOf = (node: SourceNode): string | null => {
   const value = node.source?.value;
   return typeof value === "string" ? value : null;
 };
+
+// The three forms that name a module without an `import … from`. Each is an
+// edge for the import rule and a whole-module binding for the export rule, so
+// both read them through these.
+
+// `require("m")` — a CallExpression whose callee is the bare identifier.
+export type CallNode = ReportableNode & {
+  readonly callee?: { readonly type: string; readonly name?: unknown } | null;
+  readonly arguments?: ReadonlyArray<{ readonly type: string; readonly value?: unknown }> | null;
+};
+
+// `import("m")` — `source` is any expression; only a string literal is an edge.
+export type ImportExpressionNode = ReportableNode & {
+  readonly source?: { readonly type?: string; readonly value?: unknown } | null;
+};
+
+// `import x = require("m")` — the module is under `moduleReference`, not `source`.
+export type ImportEqualsNode = ReportableNode & {
+  readonly moduleReference?: {
+    readonly type: string;
+    readonly expression?: { readonly value?: unknown } | null;
+  } | null;
+};
+
+export const requireSpecifierOf = (node: CallNode): string | null => {
+  if (node.callee?.type !== "Identifier" || node.callee.name !== "require") return null;
+  const [first] = node.arguments ?? [];
+  return first?.type === "Literal" && typeof first.value === "string" ? first.value : null;
+};
+
+export const importExpressionSpecifierOf = (node: ImportExpressionNode): string | null => {
+  const source = node.source;
+  return source?.type === "Literal" && typeof source.value === "string" ? source.value : null;
+};
+
+export const importEqualsSpecifierOf = (node: ImportEqualsNode): string | null => {
+  const reference = node.moduleReference;
+  if (reference?.type !== "TSExternalModuleReference") return null;
+  const value = reference.expression?.value;
+  return typeof value === "string" ? value : null;
+};

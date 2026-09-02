@@ -102,6 +102,12 @@ const ExportRestriction = Schema.Struct({
   // Exact exported names. Omit to mean "any named import from that module",
   // which is how a rule bans a binding form rather than a name.
   symbols: Schema.optionalKey(Schema.Array(Schema.String)),
+  // Which binding forms the rule speaks to. Defaults to `["named"]` — so a rule
+  // about a factory function says nothing about `import makeBus from "m"` until
+  // it lists `"default"`, and nothing about `import * as m`, `export * from
+  // "m"`, `import("m")` or `require("m")` until it lists `"namespace"`. A
+  // namespace binding's only name is `*`, so `symbols` cannot select one.
+  kinds: Schema.optionalKey(Schema.Array(Schema.Literals(["named", "default", "namespace"]))),
   except: Schema.optionalKey(Globs),
   fix: Schema.optionalKey(Schema.Literal("subpath-namespace-import")),
   // As on `members`: a snippet the adapter parses at load, every edge of which

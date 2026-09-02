@@ -314,7 +314,16 @@ describe("the corpus exercises every form", () => {
       { symbol: "f", kind: "named" },
     ]);
     expect(bindings.get("side-effect")).toEqual([]);
-    expect(bindings.get("require-literal")).toEqual([]);
+  });
+
+  it("reads every whole-module form as one namespace binding", () => {
+    const bindings = facts("parity/edges.ts").bindings;
+    const whole = [{ symbol: "*", kind: "namespace" }];
+    expect(bindings.get("reexport-all")).toEqual(whole);
+    expect(bindings.get("reexport-namespace")).toEqual(whole);
+    expect(bindings.get("import-equals")).toEqual(whole);
+    expect(bindings.get("dynamic-literal")).toEqual(whole);
+    expect(bindings.get("require-literal")).toEqual(whole);
   });
 
   it("names a call by its identifier or property, and not by a computed or private one", () => {

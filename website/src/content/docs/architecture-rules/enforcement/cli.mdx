@@ -152,6 +152,12 @@ require("m"); // a literal argument only
 A computed specifier — a template literal, a variable, anything but a string literal — is not an
 edge in either adapter: it is not a fact a static policy can speak about.
 
+Each edge carries **bindings**: a `named` one per name, a `default` one for a default import,
+and one `namespace` binding, named `*`, for every form that takes the whole module — `import
+
+- as`, `export _`, `export _ as`, `import =`, `import()`, `require()`. A side-effect import
+  carries none.
+
 A **call** is named by its identifier or property — `f()` and `x.f()` are both `f`. A
 computed property, `x[f]()` or `x["f"]()`, and a private one, `x.#f()`, have no name a
 vocabulary rule can speak about and are not reported.

@@ -149,6 +149,21 @@ describe("loadPolicy", () => {
     ).rejects.toThrow(/no-factories/);
   });
 
+  it("refuses a restriction whose symbols can never meet its kinds", async () => {
+    // A default binding is only ever named `default`, so a rule listing both a
+    // symbol and the default kind could never fire on either form.
+    const restriction = `exports: [{
+      name: "contradiction",
+      message: "…",
+      module: "lib/**",
+      symbols: ["makeBus"],
+      kinds: ["default"],
+    }]`;
+    await expect(
+      loadPolicy(repoRoot, writeConfig(`export default { ${RESOLVE}, ${restriction}, tree: {} };`)),
+    ).rejects.toThrow(/contradiction/);
+  });
+
   it("compiles the repo's own policy, so this suite fails if that config breaks", async () => {
     const policy = await loadPolicy(repoRoot);
     expect(policy.importRules.length).toBeGreaterThan(0);

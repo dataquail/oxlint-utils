@@ -9,9 +9,15 @@ import {
 import { formatMessage } from "../../domain/violation.js";
 import type { LoadedPolicy } from "./config-loader.js";
 import {
+  type CallNode,
   type Fixer,
+  type ImportEqualsNode,
+  importEqualsSpecifierOf,
+  type ImportExpressionNode,
+  importExpressionSpecifierOf,
   type OxlintRule,
   type ReportableNode,
+  requireSpecifierOf,
   type RuleContext,
   toRepoRelative,
 } from "./oxlint-api.js";
@@ -36,7 +42,20 @@ const nameOf = (node: NamedNode | null | undefined): string | null => {
   return typeof node.value === "string" ? node.value : null;
 };
 
-type Bound = Binding & { readonly node: SpecifierNode; readonly local: string };
+type Bound = Binding & { readonly node: ReportableNode; readonly local: string };
+
+// The whole module, as one binding. `export * from "m"`, `export * as ns from
+// "m"`, `import x = require("m")`, `import("m")` and `require("m")` all carry
+// every export of `m` at once, exactly as `import * as ns` does — and are the
+// same way around a rule about a name. A side-effect import carries nothing.
+const wholeModule = (node: ReportableNode, local = ""): Bound => ({
+  symbol: "*",
+  kind: "namespace",
+  node,
+  local,
+});
+
+type ExportAllNode = DeclarationNode & { readonly exported?: NamedNode | null };
 
 const boundOf = (specifier: SpecifierNode): Bound | null => {
   const local = nameOf(specifier.local) ?? "";
@@ -58,6 +77,14 @@ const boundOf = (specifier: SpecifierNode): Bound | null => {
       return null;
   }
 };
+
+const specifierOf = (node: DeclarationNode): string | null => {
+  const value = node.source?.value;
+  return typeof value === "string" ? value : null;
+};
+
+const boundSpecifiers = (node: DeclarationNode): ReadonlyArray<Bound> =>
+  (node.specifiers ?? []).map(boundOf).filter((one): one is Bound => one !== null);
 
 // `import { A, B as C } from "pkg"` becomes `import * as A from "pkg/A"` and
 // `import * as C from "pkg/B"`. Only whole-declaration rewrites are offered: a
@@ -84,14 +111,16 @@ export const makeExportsRule = (policy: LoadedPolicy): OxlintRule => ({
     let importer = "";
     let selected: ReadonlyArray<SelectedExportRule> = [];
 
-    const check = (node: DeclarationNode): void => {
-      const specifierValue = node.source?.value;
-      if (typeof specifierValue !== "string") return;
-
-      const bound = (node.specifiers ?? [])
-        .map(boundOf)
-        .filter((one): one is Bound => one !== null);
-      if (bound.length === 0) return;
+    // `fixable` is whether a rewrite could apply: only an `import` declaration
+    // can be rewritten into subpath namespace imports. `export *` and the
+    // whole-module forms are reported and left for the author.
+    const check = (
+      node: ReportableNode,
+      specifierValue: string | null,
+      bound: ReadonlyArray<Bound>,
+      fixable: boolean,
+    ): void => {
+      if (specifierValue === null || bound.length === 0) return;
 
       const outcome = evaluateSelectedBindings(selected, policy.resolver, {
         importer,
@@ -110,8 +139,14 @@ export const makeExportsRule = (policy: LoadedPolicy): OxlintRule => ({
         const offending = bound.filter((one: Bound) =>
           bindings.some((binding) => binding.symbol === one.symbol && binding.kind === one.kind),
         );
+        // The rewrite is `import * as X from "pkg/<name>"`, which only means
+        // something for a named binding — a namespace one has no name to put
+        // in the subpath.
         const rewritable =
-          rule.fix === "subpath-namespace-import" && offending.length === bound.length;
+          fixable &&
+          rule.fix === "subpath-namespace-import" &&
+          offending.length === bound.length &&
+          offending.every((one) => one.kind === "named");
 
         if (rewritable) {
           context.report({
@@ -137,8 +172,24 @@ export const makeExportsRule = (policy: LoadedPolicy): OxlintRule => ({
         selected = exportRulesSelecting(policy.exportRules, importer);
         return selected.length > 0;
       },
-      ImportDeclaration: check,
-      ExportNamedDeclaration: check,
+      ImportDeclaration(node: DeclarationNode) {
+        check(node, specifierOf(node), boundSpecifiers(node), true);
+      },
+      ExportNamedDeclaration(node: DeclarationNode) {
+        check(node, specifierOf(node), boundSpecifiers(node), false);
+      },
+      ExportAllDeclaration(node: ExportAllNode) {
+        check(node, specifierOf(node), [wholeModule(node, nameOf(node.exported) ?? "")], false);
+      },
+      ImportExpression(node: ImportExpressionNode) {
+        check(node, importExpressionSpecifierOf(node), [wholeModule(node)], false);
+      },
+      CallExpression(node: CallNode) {
+        check(node, requireSpecifierOf(node), [wholeModule(node)], false);
+      },
+      TSImportEqualsDeclaration(node: ImportEqualsNode) {
+        check(node, importEqualsSpecifierOf(node), [wholeModule(node)], false);
+      },
     };
   },
 });

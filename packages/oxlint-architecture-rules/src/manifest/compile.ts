@@ -721,19 +721,30 @@ export const lowerManifest = (manifest: Manifest): LoweredRules => {
         globToRegexSource(expandAliases(glob, aliases), {}, { declaring: false, nextGroup: 1 })
           .source,
       );
+    // The synthetic probe is a binding of the rule's first kind. A default
+    // binding is only ever named `default` and a namespace one `*`, so a rule
+    // that lists `symbols` alongside those kinds cannot cover its probe — and
+    // is refused at load, which is right: it could never fire on such a form.
+    const kind = rule.kinds?.[0] ?? "named";
+    const symbol =
+      rule.probe?.symbol ??
+      (kind === "namespace" ? "*" : kind === "default" ? "default" : rule.symbols?.[0]) ??
+      "zzProbeSymbol";
     exports.push({
       name: rule.name,
       message: rule.message,
       probe: {
         from: "packages/zzprobe/anywhere.ts",
         to: probePathOf(expandAliases(globsOf(rule.module)[0] ?? "", aliases), ""),
-        symbol: rule.probe?.symbol ?? rule.symbols?.[0] ?? "zzProbeSymbol",
+        symbol,
+        kind,
         ...(rule.probe === undefined ? {} : { source: rule.probe.source }),
       },
       from: EVERY_FILE,
       ...(rule.except === undefined ? {} : { fromNot: globsOf(rule.except).map(asPattern) }),
       to: globsOf(rule.module).map(asPattern),
       ...(rule.symbols === undefined ? {} : { symbols: [...rule.symbols] }),
+      ...(rule.kinds === undefined ? {} : { kinds: [...rule.kinds] }),
       ...(rule.fix === undefined ? {} : { fix: rule.fix }),
     });
   }

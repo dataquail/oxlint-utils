@@ -140,6 +140,13 @@ refuses a `class` probe, since an `interface` one loads.
 - Namespace member access (`ns.forbidden()`) is left as a documented limitation; closing it
   needs binding-aware tracking within a file and is listed under Phase 4.
 
+**As landed:** every whole-module form carries the `*` namespace binding, not only `export *`
+— `export * as ns`, `import x = require()`, `import()` and `require()` too, since each takes
+the module at once exactly as `import * as` does and `const { x } = await import("m")` is the
+same laundering vector. The synthetic probe for a restriction is a binding of its first kind
+(`default` / `*` by name), so `symbols` alongside a default or namespace kind is refused at
+load as the contradiction it is. The autofix is offered on `import` declarations only.
+
 ### 1.3 Dogfood `members` and `exports` in this repo (F7)
 
 Add at least one real rule of each family to the root `architecture.config.mjs`:
@@ -281,7 +288,7 @@ page, and — where the family has one — a rule in the root `architecture.conf
 
 ```
 Phase 0  facts cmd → parity test (+F3 fix) → fixture probes   [done]
-Phase 1  widen type-members [done] → kinds + export * → dogfood members/exports
+Phase 1  widen type-members [done] → kinds + export * [done] → dogfood members/exports
 Phase 2  surface family
 Phase 3  graph pass → cycles → orphans → reach
 Phase 4  package.json → tsconfig → type-refs → receiver-aware calls

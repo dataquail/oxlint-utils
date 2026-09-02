@@ -35,12 +35,18 @@ const bindingsOfImportClause = (clause: ts.ImportClause | undefined): ReadonlyAr
   return found;
 };
 
+// The whole module, as one binding. `export * from "m"`, `export * as ns from
+// "m"`, `import x = require("m")`, `import("m")` and `require("m")` all carry
+// every export of `m` at once, exactly as `import * as ns` does — and are the
+// same way around a rule about a name. A side-effect import carries nothing.
+const WHOLE_MODULE: ReadonlyArray<Binding> = [{ symbol: "*", kind: "namespace" }];
+
 // `export { a } from "m"` — `propertyName` is the name in the source module when
 // the export is renamed, so it is the one the policy is about.
 const bindingsOfExportClause = (
   clause: ts.NamedExportBindings | undefined,
 ): ReadonlyArray<Binding> => {
-  if (clause === undefined || ts.isNamespaceExport(clause)) return [];
+  if (clause === undefined || ts.isNamespaceExport(clause)) return WHOLE_MODULE;
   const found: Array<Binding> = [];
   for (const element of clause.elements) {
     const symbol = nameOf(element.propertyName ?? element.name);
@@ -119,14 +125,14 @@ export const factsOfText = (file: string, text: string): SourceFacts => {
       ts.isExternalModuleReference(node.moduleReference) &&
       ts.isStringLiteral(node.moduleReference.expression)
     ) {
-      record(node.moduleReference.expression.text, []);
+      record(node.moduleReference.expression.text, WHOLE_MODULE);
     } else if (ts.isCallExpression(node)) {
       const [first] = node.arguments;
       const isModuleCall =
         node.expression.kind === ts.SyntaxKind.ImportKeyword ||
         (ts.isIdentifier(node.expression) && node.expression.text === "require");
       if (isModuleCall && first !== undefined && ts.isStringLiteral(first)) {
-        record(first.text, []);
+        record(first.text, WHOLE_MODULE);
       }
 
       const callee = calleeNameOf(node.expression);

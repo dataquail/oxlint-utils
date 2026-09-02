@@ -4,50 +4,19 @@ import { evaluateSelectedEdge, rulesSelecting, type SelectedRule } from "../../c
 import { formatMessage } from "../../domain/violation.js";
 import type { LoadedPolicy } from "./config-loader.js";
 import {
+  type CallNode,
+  type ImportEqualsNode,
+  importEqualsSpecifierOf,
+  type ImportExpressionNode,
+  importExpressionSpecifierOf,
   type OxlintRule,
   type ReportableNode,
+  requireSpecifierOf,
   type RuleContext,
   type SourceNode,
   specifierOf,
   toRepoRelative,
 } from "./oxlint-api.js";
-
-// `require("m")` — a CallExpression whose callee is the bare identifier.
-type CallNode = ReportableNode & {
-  readonly callee?: { readonly type: string; readonly name?: unknown } | null;
-  readonly arguments?: ReadonlyArray<{ readonly type: string; readonly value?: unknown }> | null;
-};
-
-// `import("m")` — `source` is any expression; only a string literal is an edge.
-type ImportExpressionNode = ReportableNode & {
-  readonly source?: { readonly type?: string; readonly value?: unknown } | null;
-};
-
-// `import x = require("m")` — the module is under `moduleReference`, not `source`.
-type ImportEqualsNode = ReportableNode & {
-  readonly moduleReference?: {
-    readonly type: string;
-    readonly expression?: { readonly value?: unknown } | null;
-  } | null;
-};
-
-const requireSpecifierOf = (node: CallNode): string | null => {
-  if (node.callee?.type !== "Identifier" || node.callee.name !== "require") return null;
-  const [first] = node.arguments ?? [];
-  return first?.type === "Literal" && typeof first.value === "string" ? first.value : null;
-};
-
-const importExpressionSpecifierOf = (node: ImportExpressionNode): string | null => {
-  const source = node.source;
-  return source?.type === "Literal" && typeof source.value === "string" ? source.value : null;
-};
-
-const importEqualsSpecifierOf = (node: ImportEqualsNode): string | null => {
-  const reference = node.moduleReference;
-  if (reference?.type !== "TSExternalModuleReference") return null;
-  const value = reference.expression?.value;
-  return typeof value === "string" ? value : null;
-};
 
 const unresolvedMessage = (specifier: string, detail: string): string =>
   `[unresolved-import] "${specifier}" could not be resolved, so every import rule about it ` +

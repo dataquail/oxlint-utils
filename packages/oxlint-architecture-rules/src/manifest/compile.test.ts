@@ -469,6 +469,39 @@ describe("export restrictions", () => {
   });
 });
 
+describe("export restriction kinds", () => {
+  const restriction = (kinds?: ReadonlyArray<"named" | "default" | "namespace">) =>
+    lowerManifest({
+      ...base({}),
+      exports: [
+        {
+          name: "no-effect-barrel",
+          message: "Import effect by subpath.",
+          module: "**/node_modules/effect/**",
+          ...(kinds === undefined ? {} : { kinds }),
+        },
+      ],
+    });
+
+  it("passes kinds through, and aims the synthetic probe at the first of them", () => {
+    const rule = ruleNamed(restriction(["namespace", "named"]).exports, "no-effect-barrel");
+    expect(rule.kinds).toEqual(["namespace", "named"]);
+    expect(rule.probe.kind).toBe("namespace");
+    expect(rule.probe.symbol).toBe("*");
+  });
+
+  it("names a default probe `default`", () => {
+    const rule = ruleNamed(restriction(["default"]).exports, "no-effect-barrel");
+    expect(rule.probe).toMatchObject({ kind: "default", symbol: "default" });
+  });
+
+  it("leaves kinds unset — the core's default of named — when the manifest says nothing", () => {
+    const rule = ruleNamed(restriction().exports, "no-effect-barrel");
+    expect(rule.kinds).toBeUndefined();
+    expect(rule.probe.kind).toBe("named");
+  });
+});
+
 describe("member rules", () => {
   it("carries an authored probe's source and name, and drops the synthetic `in`", () => {
     const lowered = lowerManifest(
