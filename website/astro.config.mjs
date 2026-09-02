@@ -1,0 +1,59 @@
+import starlight from "@astrojs/starlight";
+import { defineConfig } from "astro/config";
+
+export default defineConfig({
+  integrations: [
+    starlight({
+      title: "Oxlint Utils",
+      description:
+        "Oxlint plugins and tooling from dataquail. Architecture Rules turns architecture policy into one manifest of your repository, enforced by oxlint.",
+      social: [
+        {
+          icon: "github",
+          label: "GitHub",
+          href: "https://github.com/dataquail/oxlint-utils",
+        },
+      ],
+      // One group per package, so a second library lands beside this one rather
+      // than inside it.
+      sidebar: [
+        {
+          label: "Architecture Rules",
+          items: [
+            {
+              label: "Getting Started",
+              items: [
+                { slug: "architecture-rules/getting-started/introduction" },
+                { slug: "architecture-rules/getting-started/installation" },
+              ],
+            },
+            {
+              label: "The Manifest",
+              items: [
+                { slug: "architecture-rules/manifest", label: "Overview" },
+                { slug: "architecture-rules/manifest/patterns" },
+                { slug: "architecture-rules/manifest/imports" },
+                { slug: "architecture-rules/manifest/imported-by" },
+                { slug: "architecture-rules/manifest/exports" },
+                { slug: "architecture-rules/manifest/members" },
+                { slug: "architecture-rules/manifest/structure" },
+                { slug: "architecture-rules/manifest/inheritance" },
+              ],
+            },
+            {
+              label: "Enforcement",
+              items: [
+                { slug: "architecture-rules/enforcement/resolution" },
+                { slug: "architecture-rules/enforcement/probes" },
+                { slug: "architecture-rules/enforcement/baseline" },
+                { slug: "architecture-rules/enforcement/cli" },
+              ],
+            },
+          ],
+        },
+      ],
+    }),
+  ],
+  site: "https://dataquail.github.io",
+  base: "/oxlint-utils",
+});

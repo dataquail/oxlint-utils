@@ -1,0 +1,66 @@
+{
+  "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "namedInputs": {
+    "default": ["{projectRoot}/**/*", "sharedGlobals"],
+    "production": [
+      "default",
+      "!{projectRoot}/**/?(*.)+(spec|test).[jt]s?(x)?(.snap)",
+      "!{projectRoot}/tsconfig.test.json",
+      "!{projectRoot}/vitest.config.ts"
+    ],
+    "sharedGlobals": [
+      "{workspaceRoot}/.github/workflows/ci.yml",
+      "{workspaceRoot}/.nvmrc",
+      "{workspaceRoot}/tsconfig.base.json",
+      "{workspaceRoot}/tsconfig.resolve.json",
+      "{workspaceRoot}/.oxlintrc.json",
+      "{workspaceRoot}/architecture.config.mjs",
+      "{workspaceRoot}/scripts/lint-rules/**/*"
+    ]
+  },
+  "targetDefaults": {
+    "build": {
+      "dependsOn": ["^build"]
+    },
+    "test": {
+      "dependsOn": ["^build"]
+    },
+    "check": {
+      "dependsOn": ["^build"]
+    },
+    "nx-release-publish": {
+      "options": {
+        "packageRoot": "{projectRoot}",
+        "access": "public"
+      }
+    },
+    "lint": {
+      "dependsOn": ["build"]
+    }
+  },
+  "release": {
+    "projectsRelationship": "independent",
+    "projects": ["packages/*"],
+    "git": {
+      "commitMessage": "chore: updated version [no ci]"
+    },
+    "releaseTag": {
+      "strictPreid": false
+    },
+    "version": {
+      "conventionalCommits": true,
+      "fallbackCurrentVersionResolver": "disk",
+      "updateDependents": "auto",
+      "preserveLocalDependencyProtocols": true,
+      "manifestRootsToUpdate": ["{projectRoot}"]
+    },
+    "changelog": {
+      "automaticFromRef": true,
+      "projectChangelogs": {
+        "file": false,
+        "createRelease": "github"
+      }
+    }
+  },
+  "analytics": false
+}

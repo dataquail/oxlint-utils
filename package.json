@@ -1,0 +1,108 @@
+{
+  "name": "oxlint-utils-source",
+  "version": "0.0.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dataquail/oxlint-utils.git"
+  },
+  "packageManager": "pnpm@10.33.0",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22.13.1"
+  },
+  "scripts": {
+    "build:all": "nx run-many --target=build",
+    "build:packages": "nx run-many --target=build --projects=packages/*",
+    "test:all": "nx run-many --target=test",
+    "test:packages": "nx run-many --target=test --projects=packages/*",
+    "lint:all": "nx run-many --target=lint",
+    "lint:packages": "nx run-many --target=lint --projects=packages/*",
+    "check:all": "nx run-many --target=check",
+    "watch:packages": "pnpm run build:packages && nx watch --projects=packages/* -- pnpm run build:packages",
+    "dev:all": "pnpm run watch:packages",
+    "build:architecture-rules": "pnpm -F oxlint-architecture-rules build",
+    "lint": "pnpm run build:architecture-rules && oxlint --type-aware --quiet packages",
+    "lint:fix": "pnpm run build:architecture-rules && oxlint --type-aware packages --fix",
+    "lint:architecture": "pnpm run build:architecture-rules && node packages/oxlint-architecture-rules/build/esm/adapters/cli/main.js check packages",
+    "architecture:baseline": "pnpm run build:architecture-rules && node packages/oxlint-architecture-rules/build/esm/adapters/cli/main.js baseline packages",
+    "architecture:explain": "pnpm run build:architecture-rules && node packages/oxlint-architecture-rules/build/esm/adapters/cli/main.js explain",
+    "check": "tsc -b tsconfig.json",
+    "check:effect": "node scripts/check-effect-diagnostics.mjs",
+    "precommit": "nx run-many -t lint test check",
+    "prettier": "prettier --ignore-unknown '**/*'",
+    "prettier:write": "pnpm run prettier --write",
+    "dev:website": "pnpm --filter @oxlint-utils/website dev",
+    "build:website": "pnpm --filter @oxlint-utils/website build",
+    "preview:website": "pnpm --filter @oxlint-utils/website preview",
+    "troubleshoot:ci": "act -W .github/workflows/ci.yml workflow_dispatch",
+    "prepare": "husky && effect-tsgo patch --oxlint",
+    "inject-token": "bash .devcontainer/inject-token.sh",
+    "devpod:up": "pnpm run inject-token && bash -c 'devpod up . --id=\"$1\"' --",
+    "devpod:delete": "bash -c 'devpod delete \"$1\"' --"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.8.0",
+    "@commitlint/config-conventional": "^19.8.0",
+    "@effect/language-service": "0.87.2",
+    "@effect/tsgo": "^0.36.1",
+    "@effect/vitest": "4.0.0-beta.94",
+    "@nx/js": "22.6.5",
+    "@swc-node/register": "1.12.1",
+    "@swc/core": "1.15.47",
+    "@types/node": "^25.9.4",
+    "@typescript/native": "npm:typescript@7.0.2",
+    "@vitest/coverage-v8": "^3.2.7",
+    "effect": "4.0.0-beta.94",
+    "eslint-plugin-codegen": "^0.34.1",
+    "eslint-plugin-simple-import-sort": "^13.0.0",
+    "eslint-plugin-sort-destructure-keys": "^3.0.0",
+    "husky": "^9.1.7",
+    "nx": "22.6.5",
+    "oxlint": "1.77.0",
+    "oxlint-tsgolint": "7.0.2001",
+    "prettier": "3.9.6",
+    "read-package-up": "^12.0.0",
+    "typescript": "^5.9.3",
+    "verdaccio": "6.9.2",
+    "vitest": "^3.2.7"
+  },
+  "nx": {
+    "includedScripts": [],
+    "targets": {
+      "local-registry": {
+        "executor": "@nx/js:verdaccio",
+        "options": {
+          "port": 4873,
+          "config": ".verdaccio/config.yml",
+          "storage": "tmp/local-registry/storage"
+        }
+      }
+    }
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@swc/core",
+      "esbuild",
+      "msgpackr-extract",
+      "nx",
+      "unrs-resolver"
+    ],
+    "overrides": {
+      "effect": "4.0.0-beta.94",
+      "@effect/vitest": "4.0.0-beta.94",
+      "@effect/language-service": "0.87.2",
+      "vitest": "^3.2.7",
+      "esbuild": "^0.25.0",
+      "flatted": "^3.4.2",
+      "form-data": "^4.0.4",
+      "glob@10": "^10.5.0",
+      "glob@11": "^11.1.0",
+      "lodash": "^4.18.1",
+      "minimatch@9": "^9.0.7",
+      "picomatch@4": "^4.0.4",
+      "rollup": "^4.60.0"
+    }
+  }
+}
