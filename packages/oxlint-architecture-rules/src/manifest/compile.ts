@@ -617,16 +617,16 @@ export const lowerManifest = (manifest: Manifest): LoweredRules => {
         probe:
           spec.probe === undefined
             ? {
-                from: probePathOf(joinedGlob, ""),
+                from: scopeProbe,
                 name: probeMemberName(spec.match),
                 ...(spec.in === undefined ? {} : { in: "ZzProbeRepositoryShape" }),
               }
-            : {
-                from: probePathOf(joinedGlob, ""),
-                name: spec.probe.name,
-                source: spec.probe.source,
-              },
-        from: selfPattern,
+            : { from: scopeProbe, name: spec.probe.name, source: spec.probe.source },
+        // On a folder the rule covers the subtree, as `imports` does — a
+        // vocabulary is a statement about every file in a tier. Selecting the
+        // folder's own path instead governed no file, and the probe, a folder
+        // path, passed regardless.
+        from: scope,
         subject: spec.subject,
         ...(spec.in === undefined ? {} : { in: asRegex(spec.in) }),
         ...(spec.match === undefined ? {} : { match: asRegex(spec.match) }),

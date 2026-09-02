@@ -503,6 +503,25 @@ describe("export restriction kinds", () => {
 });
 
 describe("member rules", () => {
+  it("covers the subtree when stated on a folder, as imports does", () => {
+    const lowered = lowerManifest(
+      base({
+        "@/core/": {
+          layout: "open",
+          children: {},
+          members: [{ message: "core reads no file.", subject: "calls", match: "readFileSync" }],
+        },
+      }),
+    );
+
+    const [rule] = lowered.members;
+    const from = new RegExp(rule?.from as string);
+    expect(from.test("pkg/src/core/imports.ts")).toBe(true);
+    expect(from.test("pkg/src/core/deep/nested.ts")).toBe(true);
+    expect(from.test("pkg/src/domain/x.ts")).toBe(false);
+    expect(from.test(rule?.probe.from as string)).toBe(true);
+  });
+
   it("carries an authored probe's source and name, and drops the synthetic `in`", () => {
     const lowered = lowerManifest(
       base({

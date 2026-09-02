@@ -161,6 +161,15 @@ Add at least one real rule of each family to the root `architecture.config.mjs`:
 The point is not the rules; it is that `pnpm lint` now exercises all four families on every
 commit. Do this **after** 1.1 and 1.2 so the rules can be written against the widened surface.
 
+**As landed:** four rules, each with an authored probe, each verified to fire under both
+`oxlint` and `architecture check` by planting its violation. `members`: `core/` and
+`domain/` may not call `*Sync` / `readFile` / `readdir` / `writeFile` / `require`; a `ports/`
+type member starts lowercase. `exports`: `make*Live` is imported only by `config-loader.ts`,
+the barrel and tests; no `namespace` binding of any `@arch/**` module. Writing the first
+`members` rule on a folder node found a lowering bug — `members` selected the folder's own
+path rather than its subtree (as `imports` does), so a folder-level vocabulary governed no
+file and its folder-path probe passed anyway. Fixed and pinned in `compile.test.ts`.
+
 ---
 
 ## Phase 2 — A fifth family: the export surface
@@ -288,7 +297,7 @@ page, and — where the family has one — a rule in the root `architecture.conf
 
 ```
 Phase 0  facts cmd → parity test (+F3 fix) → fixture probes   [done]
-Phase 1  widen type-members [done] → kinds + export * [done] → dogfood members/exports
+Phase 1  widen type-members [done] → kinds + export * [done] → dogfood members/exports [done]
 Phase 2  surface family
 Phase 3  graph pass → cycles → orphans → reach
 Phase 4  package.json → tsconfig → type-refs → receiver-aware calls

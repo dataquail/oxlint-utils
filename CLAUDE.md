@@ -18,6 +18,10 @@ Astro + Starlight docs site deployed to GitHub Pages at <https://dataquail.githu
 `architecture.config.mjs` at the root is a real policy over `packages/`, wired into `.oxlintrc.json` as
 the `architecture` JS plugin, so `pnpm lint` fails on a layering violation. That makes the policy the
 package's largest test: a change that breaks lowering or resolution breaks the lint run here first.
+All four families are in it, deliberately — `imports` and `structure` for the layering, `members` for
+"`core/` and `domain/` never touch the file system" and "a port member is camelCase", `exports` for
+"a live adapter is constructed only at the composition root" and "no namespace import or `export *`
+between tiers" — so a family whose extraction quietly narrows breaks this lint run, not a user's.
 
 ## Commands
 

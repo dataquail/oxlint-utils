@@ -27,6 +27,21 @@
 // run here first.
 
 /** @type {import("oxlint-architecture-rules").Manifest} */
+// "Given facts, they return violations; they never read a file." Stated as a
+// rule about calls rather than about imports: an import allowlist stops
+// `node:fs` at the door, but a `readFileSync` handed in as a callback, or
+// reached through a helper, is the same violation with no edge to catch.
+const NO_FILE_SYSTEM_CALLS = {
+  message:
+    "`{name}` reads or writes the file system. This tier is given facts and returns violations; the file system is behind a port, and the port is what it takes.",
+  subject: "calls",
+  match: ["*Sync", "readFile", "readdir", "writeFile", "require"],
+  probe: {
+    source: 'import { readFileSync } from "node:fs"; readFileSync("x");',
+    name: "readFileSync",
+  },
+};
+
 export default {
   // Where a repository adopting this policy records the violations it is
   // carrying. This one has none, so the file is absent — and `architecture
@@ -48,6 +63,31 @@ export default {
     "~": "packages",
     "@arch": "packages/oxlint-architecture-rules/src",
   },
+
+  // Which exported names may cross which edges — the family a path rule cannot
+  // express, because every importer of a module resolves to the same file.
+  exports: [
+    {
+      name: "live-adapters-at-the-composition-root",
+      message:
+        "A live adapter is constructed once, where the package is composed. Everything else takes the port it satisfies, or the fake — which is what lets it be tested without a file system or a resolver.",
+      module: "@arch/infrastructure/*-live.ts",
+      symbols: ["makeFileSystemLive", "makeModuleResolverLive", "makeFactExtractorLive"],
+      except: ["@arch/adapters/oxlint/config-loader.ts", "@arch/index.ts", "**/*.test.ts"],
+      probe: {
+        source: 'import { makeFileSystemLive } from "../infrastructure/file-system-live.js";',
+        symbol: "makeFileSystemLive",
+      },
+    },
+    {
+      name: "name-what-you-take",
+      message:
+        "Name what you take from a sibling module. A namespace import or an `export *` takes every export at once, hides which are used, and launders a restricted name past every rule about it.",
+      module: "@arch/**",
+      kinds: ["namespace"],
+      probe: { source: 'import * as imports from "../core/imports.js";', symbol: "*" },
+    },
+  ],
 
   tree: {
     "~/oxlint-architecture-rules/": {
@@ -72,6 +112,7 @@ export default {
                 "domain/ is the model: the manifest schema, the error types, and the Violation with its line-independent fingerprint. No I/O, and nothing above it.",
               layout: "open",
               children: {},
+              members: [NO_FILE_SYSTEM_CALLS],
               imports: {
                 message:
                   "domain/ is the bottom of the graph. It reaches itself and the runtime, and nothing else in the package.",
@@ -81,9 +122,22 @@ export default {
 
             "ports/": {
               message:
-                "ports/ declares the two things this package must touch — a file system and a module resolver — as interfaces, so the core can be tested without either.",
+                "ports/ declares the things this package must touch — a file system, a module resolver, a parser — as interfaces, so the core can be tested without any of them.",
               layout: "open",
               children: {},
+              members: [
+                {
+                  message:
+                    'A port member is a verb in camelCase: "{name}" is not. The port is the vocabulary every adapter must speak, and its case is part of the contract.',
+                  subject: "type-members",
+                  allow: "[a-z]*",
+                  probe: {
+                    source:
+                      "export type FileSystem = { readonly Exists: (path: string) => boolean };",
+                    name: "Exists",
+                  },
+                },
+              ],
               imports: {
                 message:
                   "A port is a declaration. It may name the domain types that appear in its signatures, and nothing else.",
@@ -96,6 +150,7 @@ export default {
                 "core/ holds the pure evaluators — imports, exports, members, structure, baseline, patterns. Given facts, they return violations; they never read a file.",
               layout: "open",
               children: {},
+              members: [NO_FILE_SYSTEM_CALLS],
               imports: {
                 message:
                   "core/ evaluates. It reaches the domain, the ports it is given, and its own siblings — never a live adapter, which is what lets every rule here be tested against a fake.",
