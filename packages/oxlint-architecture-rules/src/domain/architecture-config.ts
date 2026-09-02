@@ -57,11 +57,16 @@ export const ResolveConfig = Schema.Struct({
 // cares that `named` was used at all.
 const BindingKind = Schema.Literals(["named", "default", "namespace"]);
 
+// `source`, when present, is a snippet the loading adapter parses: the probe
+// then holds only if a binding named `symbol` comes out of the parser and the
+// rule covers it, with every edge in the snippet taken to resolve to `to`.
+// Without it the probe is a synthetic binding of `symbol` and `kind`.
 const ExportProbe = Schema.Struct({
   from: Schema.String,
   to: Schema.String,
   symbol: Schema.String,
   kind: Schema.optionalKey(BindingKind),
+  source: Schema.optionalKey(Schema.String),
 });
 
 // Where a given *exported symbol* may be imported. `imports` asks whether one
@@ -95,10 +100,15 @@ export const ExportRule = Schema.Struct({
 // hooks a tier may reach for).
 const MemberSubject = Schema.Literals(["type-members", "calls"]);
 
+// `source`, when present, is a snippet the loading adapter parses: the probe
+// then holds only if a site named `name` comes out of the parser and the rule
+// reports it — the declaration shape is the parser's to judge, not `in`'s.
+// Without it the probe is a synthetic site of `name` inside `in`.
 const MemberProbe = Schema.Struct({
   from: Schema.String,
   name: Schema.String,
   in: Schema.optionalKey(Schema.String),
+  source: Schema.optionalKey(Schema.String),
 });
 
 // Which names a file is allowed to declare or call. This is the one family that

@@ -44,6 +44,7 @@ a package be reached by subpath rather than by destructuring its barrel.
 | `symbols` | exact exported names. Omit to mean _any named import from that module_ |
 | `except`  | importers the restriction does not apply to                            |
 | `fix`     | `"subpath-namespace-import"` — offer an autofix                        |
+| `probe`   | `{ source, symbol }` — an import the rule must cover `symbol` out of   |
 
 Names are read as they appear **in the source module**, not as the importer aliased them:
 `import { makeCommandBus as make }` is still `makeCommandBus`, and `export { a as b } from`
@@ -51,6 +52,19 @@ is still `a`. Renaming at the import site is not an escape.
 
 A side-effect import (`import "m"`) carries no names, so the export family has nothing to
 judge there — the import family still sees the edge.
+
+## Proving the rule sees the binding
+
+A rule is compared against bindings by kind, and covers `named` ones unless `kinds` says
+otherwise. An authored `probe` is how to show it sees the form you mean: the snippet is
+parsed at load, every edge in it is taken to reach `module`, and a binding named `symbol`
+must come out covered — `"default"` for a default import, `"*"` for a namespace one.
+
+```js
+probe: { source: 'import { makeCommandBus } from "@org/cqrs";', symbol: "makeCommandBus" },
+```
+
+See [Probes](/oxlint-utils/architecture-rules/enforcement/probes/#writing-the-probe-yourself).
 
 ## The autofix
 

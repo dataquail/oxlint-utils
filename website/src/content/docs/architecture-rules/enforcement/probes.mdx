@@ -36,14 +36,81 @@ Structure parity is checked _structurally_ — that the rule still selects its p
 still renders a required sibling — rather than by consulting the real filesystem, so the
 guard does not depend on a fixture existing.
 
-## What a probe cannot check
+## What a synthetic probe cannot check
 
-A probe proves a rule **can** fire. It does not prove the rule fires on the thing you meant,
-and it cannot: the probe is generated from the same pattern the rule was, so a pattern that
-is wrong in the same way in both places will pass.
+A generated probe proves a rule **can** fire. It does not prove the rule fires on the thing
+you meant, and it cannot, for two reasons.
 
-Two habits close that gap, and both are worth building into a repository that takes this
-seriously:
+The first is that the probe is generated from the same pattern the rule was, so a pattern
+that is wrong in the same way in both places will pass.
+
+The second is sharper: **a synthetic probe never meets a parser.** It is a path and a name
+handed straight to the rule's patterns. Whether the adapter would ever _extract_ that name
+from real source — whether it reads members out of an `interface`, say, or out of
+`type Port = Base & { … }` — is a question the probe does not ask. A `members` rule about a
+declaration shape the extractor is blind to passes its synthetic probe and enforces
+nothing, which is precisely the failure probes exist to prevent.
+
+## Writing the probe yourself
+
+For `members` and `exports`, a rule may carry its own probe: a source snippet and the name
+the rule must report out of it.
+
+```js
+"*.repository.ts": {
+  members: [
+    {
+      message: 'Port method "{name}" is not in the vocabulary.',
+      subject: "type-members",
+      in: "*RepositoryShape",
+      allow: ["findOneById", "save"],
+      probe: {
+        source: "export type TodosRepositoryShape = { findOneByEmail(): void };",
+        name: "findOneByEmail",
+      },
+    },
+  ],
+},
+```
+
+At load, the snippet is **parsed** — by the same extractor the CLI reads every file through —
+and the rule must report a site named `findOneByEmail` out of what the parser read. If the
+parser reads no such site, the rule is refused at load with the same error a drifted pattern
+gets, and `architecture facts` shows what the parser does read.
+
+Write the snippet in the shape your real code takes. If your ports are interfaces, write an
+interface; if they are intersections, write one. Today the extractor reads members out of a
+bare `type X = { … }` alias only, so a rule probed with an `interface` refuses to load — and
+that refusal is the point. It is the difference between a rule you _believe_ covers your
+ports and one that has been shown to.
+
+For `exports`, the snippet is an import statement and the name is the binding:
+
+```js
+exports: [
+  {
+    name: "bus-factories",
+    message: "Only a composition root may build a bus.",
+    module: "**/node_modules/@org/cqrs/**",
+    symbols: ["makeCommandBus"],
+    probe: { source: 'import { makeCommandBus } from "@org/cqrs";', symbol: "makeCommandBus" },
+  },
+],
+```
+
+Every edge in the snippet is taken to reach `module`, so the probe is about the binding form
+and not about resolution. `symbol` is `"default"` for a default import and `"*"` for a
+namespace one — which makes this the way to prove a rule with `kinds: ["default"]` actually
+sees a default import.
+
+`imports` rules have no authored form. What an import probe would prove — that a given
+syntax is an edge at all — is pinned for every rule at once by the package's own parity
+suite, which parses every edge form through both adapters and holds them to one answer.
+
+## Two more habits
+
+Beyond the probe, two practices close the gap between _can fire_ and _fires on what you
+meant_, and both are worth building into a repository that takes this seriously:
 
 **An edge table.** A list of `(importer, specifier, expected verdict)` rows checked on every
 run. The _allowed_ rows matter as much as the refused ones — a policy that refuses everything

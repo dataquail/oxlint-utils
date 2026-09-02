@@ -93,6 +93,62 @@ describe("loadPolicy", () => {
     ).rejects.toThrow(/do not report their own probe/);
   });
 
+  // The point of an authored probe. Both members rules below are written the
+  // same way; only the snippet differs. The synthetic probe passes both. The
+  // real parser reads a member out of the bare alias and nothing out of the
+  // interface — so the second rule is refused at load, today, rather than
+  // silently enforcing nothing until someone widens the extractor.
+  const membersRuleWith = (probe: string) => `tree: {
+    "packages/server/src/modules/{module}/domain/": {
+      children: {
+        "*.repository.ts": {
+          members: [
+            {
+              message: 'Port method "{name}" is not in the vocabulary.',
+              subject: "type-members",
+              in: "*RepositoryShape",
+              allow: ["findOne"],
+              probe: ${probe},
+            },
+          ],
+        },
+      },
+    },
+  }`;
+
+  it("loads a member rule whose source probe the parser reads and the rule reports", async () => {
+    const probe = `{ source: "export type TodosRepositoryShape = { findOneById(): void };", name: "findOneById" }`;
+    const policy = await loadPolicy(
+      repoRoot,
+      writeConfig(`export default { ${RESOLVE}, ${membersRuleWith(probe)} };`),
+    );
+    expect(policy.memberRules).toHaveLength(1);
+  });
+
+  it("refuses a member rule whose source probe is a shape the parser does not read", async () => {
+    const probe = `{ source: "export interface TodosRepositoryShape { findOneById(): void }", name: "findOneById" }`;
+    await expect(
+      loadPolicy(
+        repoRoot,
+        writeConfig(`export default { ${RESOLVE}, ${membersRuleWith(probe)} };`),
+      ),
+    ).rejects.toThrow(/architecture facts/);
+  });
+
+  it("checks an export restriction's source probe through the parser too", async () => {
+    // A default import, against a rule that (by default) covers named bindings only.
+    const restriction = `exports: [{
+      name: "no-factories",
+      message: "A factory is built at a composition root.",
+      module: "lib/**",
+      symbols: ["makeBus"],
+      probe: { source: 'import makeBus from "lib/bus";', symbol: "default" },
+    }]`;
+    await expect(
+      loadPolicy(repoRoot, writeConfig(`export default { ${RESOLVE}, ${restriction}, tree: {} };`)),
+    ).rejects.toThrow(/no-factories/);
+  });
+
   it("compiles the repo's own policy, so this suite fails if that config breaks", async () => {
     const policy = await loadPolicy(repoRoot);
     expect(policy.importRules.length).toBeGreaterThan(0);

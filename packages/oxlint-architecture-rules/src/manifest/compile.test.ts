@@ -447,6 +447,59 @@ describe("export restrictions", () => {
 
     expect(ruleNamed(lowered.exports, "no-factories").probe.to).toContain("node_modules/pkg");
   });
+
+  it("carries an authored probe's source and symbol in place of the synthetic symbol", () => {
+    const lowered = lowerManifest({
+      ...base({}),
+      exports: [
+        {
+          name: "no-factories",
+          message: "A factory is built at a composition root.",
+          module: "**/node_modules/pkg/**",
+          symbols: ["makeBus"],
+          probe: { source: 'import makeBus from "pkg";', symbol: "default" },
+        },
+      ],
+    });
+
+    const probe = ruleNamed(lowered.exports, "no-factories").probe;
+    expect(probe.symbol).toBe("default");
+    expect(probe.source).toBe('import makeBus from "pkg";');
+    expect(probe.to).toContain("node_modules/pkg");
+  });
+});
+
+describe("member rules", () => {
+  it("carries an authored probe's source and name, and drops the synthetic `in`", () => {
+    const lowered = lowerManifest(
+      base({
+        "@/domain/": {
+          children: {
+            "*.repository.ts": {
+              members: [
+                {
+                  message: "Not in the vocabulary.",
+                  subject: "type-members",
+                  in: "*RepositoryShape",
+                  allow: ["findOne"],
+                  probe: {
+                    source: "export type X = { findOneById(): void };",
+                    name: "findOneById",
+                  },
+                },
+              ],
+            },
+          },
+        },
+      }),
+    );
+
+    const [rule] = lowered.members;
+    expect(rule?.probe.name).toBe("findOneById");
+    expect(rule?.probe.source).toBe("export type X = { findOneById(): void };");
+    expect(rule?.probe.in).toBeUndefined();
+    expect(rule?.probe.from).toMatch(/\.repository\.ts$/);
+  });
 });
 
 describe("naming", () => {

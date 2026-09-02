@@ -611,11 +611,21 @@ export const lowerManifest = (manifest: Manifest): LoweredRules => {
       members.push({
         name: `${name}/members-${String(index)}`,
         message: spec.message,
-        probe: {
-          from: probePathOf(joinedGlob, ""),
-          name: probeMemberName(spec.match),
-          ...(spec.in === undefined ? {} : { in: "ZzProbeRepositoryShape" }),
-        },
+        // An authored probe replaces the synthetic site: the name is the one
+        // the author says the snippet declares, and the declaration is the
+        // parser's to find.
+        probe:
+          spec.probe === undefined
+            ? {
+                from: probePathOf(joinedGlob, ""),
+                name: probeMemberName(spec.match),
+                ...(spec.in === undefined ? {} : { in: "ZzProbeRepositoryShape" }),
+              }
+            : {
+                from: probePathOf(joinedGlob, ""),
+                name: spec.probe.name,
+                source: spec.probe.source,
+              },
         from: selfPattern,
         subject: spec.subject,
         ...(spec.in === undefined ? {} : { in: asRegex(spec.in) }),
@@ -717,7 +727,8 @@ export const lowerManifest = (manifest: Manifest): LoweredRules => {
       probe: {
         from: "packages/zzprobe/anywhere.ts",
         to: probePathOf(expandAliases(globsOf(rule.module)[0] ?? "", aliases), ""),
-        symbol: rule.symbols?.[0] ?? "zzProbeSymbol",
+        symbol: rule.probe?.symbol ?? rule.symbols?.[0] ?? "zzProbeSymbol",
+        ...(rule.probe === undefined ? {} : { source: rule.probe.source }),
       },
       from: EVERY_FILE,
       ...(rule.except === undefined ? {} : { fromNot: globsOf(rule.except).map(asPattern) }),

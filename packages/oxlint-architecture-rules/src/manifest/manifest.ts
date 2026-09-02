@@ -71,6 +71,16 @@ const Naming = Schema.Union([
   Schema.Struct({ like: Schema.String, message: Schema.optionalKey(Schema.String) }),
 ]);
 
+// A probe the author writes, in place of the synthetic one lowering would
+// generate. `source` is parsed by the adapter at load, and the rule must report
+// the named site out of what the parser read — which is the only way to state
+// "this rule fires on an intersection-typed port" and have it checked, since a
+// synthetic probe never meets a parser.
+const MemberProbe = Schema.Struct({
+  source: Schema.String,
+  name: Schema.String,
+});
+
 const Members = Schema.Struct({
   message: Schema.String,
   subject: Schema.Literals(["type-members", "calls"]),
@@ -78,6 +88,7 @@ const Members = Schema.Struct({
   match: Schema.optionalKey(Globs),
   matchNot: Schema.optionalKey(Globs),
   allow: Schema.optionalKey(Globs),
+  probe: Schema.optionalKey(MemberProbe),
 });
 
 // Which importers may name a given exported symbol. A path rule cannot say
@@ -93,6 +104,10 @@ const ExportRestriction = Schema.Struct({
   symbols: Schema.optionalKey(Schema.Array(Schema.String)),
   except: Schema.optionalKey(Globs),
   fix: Schema.optionalKey(Schema.Literal("subpath-namespace-import")),
+  // As on `members`: a snippet the adapter parses at load, every edge of which
+  // is taken to reach this module, and a binding out of it the rule must cover.
+  // `symbol` is `"default"` for a default import and `"*"` for a namespace one.
+  probe: Schema.optionalKey(Schema.Struct({ source: Schema.String, symbol: Schema.String })),
 });
 
 export type ManifestNode = {

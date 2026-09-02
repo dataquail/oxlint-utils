@@ -2,6 +2,7 @@ import * as Result from "effect/Result";
 import { describe, expect, it } from "vitest";
 
 import type { ExportRule } from "../domain/architecture-config.js";
+import { makeFactExtractorFake } from "../infrastructure/fact-extractor-fake.js";
 import { makeModuleResolverFake } from "../infrastructure/module-resolver-fake.js";
 import {
   type Binding,
@@ -139,30 +140,85 @@ describe("evaluateBindingEdge", () => {
   });
 });
 
+const NO_PARSER = makeFactExtractorFake({});
+
 describe("exportRulesFailingTheirProbe", () => {
   it("passes a rule that reports its own probe", () => {
-    expect(exportRulesFailingTheirProbe(compile([busFactories]))).toEqual([]);
+    expect(exportRulesFailingTheirProbe(compile([busFactories]), NO_PARSER)).toEqual([]);
   });
 
   it("catches a rule whose symbol list no longer covers its probe", () => {
     const drifted: ExportRule = { ...busFactories, symbols: ["makeQueryBus"] };
-    expect(exportRulesFailingTheirProbe(compile([drifted])).map((rule) => rule.name)).toEqual([
-      "bus-factories-at-composition-roots",
-    ]);
+    expect(
+      exportRulesFailingTheirProbe(compile([drifted]), NO_PARSER).map((rule) => rule.name),
+    ).toEqual(["bus-factories-at-composition-roots"]);
   });
 
   it("catches a rule whose target no longer covers its probe", () => {
     const drifted: ExportRule = { ...busFactories, to: "/node_modules/never-matches/" };
-    expect(exportRulesFailingTheirProbe(compile([drifted])).map((rule) => rule.name)).toEqual([
-      "bus-factories-at-composition-roots",
-    ]);
+    expect(
+      exportRulesFailingTheirProbe(compile([drifted]), NO_PARSER).map((rule) => rule.name),
+    ).toEqual(["bus-factories-at-composition-roots"]);
   });
 
   it("catches a rule whose kinds no longer cover its probe", () => {
     const drifted: ExportRule = { ...busFactories, kinds: ["namespace"] };
-    expect(exportRulesFailingTheirProbe(compile([drifted])).map((rule) => rule.name)).toEqual([
-      "bus-factories-at-composition-roots",
-    ]);
+    expect(
+      exportRulesFailingTheirProbe(compile([drifted]), NO_PARSER).map((rule) => rule.name),
+    ).toEqual(["bus-factories-at-composition-roots"]);
+  });
+
+  // With a source, every edge in the snippet is taken to reach `probe.to`, and
+  // a binding of the probe's symbol must come out of the parser covered.
+  describe("with a source", () => {
+    const NAMED = 'import { makeCommandBus } from "@effect-server-utils/cqrs";';
+    const DEFAULT = 'import makeCommandBus from "@effect-server-utils/cqrs";';
+    const parser = makeFactExtractorFake({
+      [NAMED]: {
+        specifiers: ["@effect-server-utils/cqrs"],
+        bindings: new Map([["@effect-server-utils/cqrs", named("makeCommandBus")]]),
+        memberSites: [],
+      },
+      [DEFAULT]: {
+        specifiers: ["@effect-server-utils/cqrs"],
+        bindings: new Map([
+          ["@effect-server-utils/cqrs", [{ symbol: "default", kind: "default" as const }]],
+        ]),
+        memberSites: [],
+      },
+    });
+    const sourced = (source: string, symbol = "makeCommandBus"): ExportRule => ({
+      ...busFactories,
+      probe: { ...busFactories.probe, symbol, source },
+    });
+
+    it("passes when the parser reads a covered binding of the probe's symbol", () => {
+      expect(exportRulesFailingTheirProbe(compile([sourced(NAMED)]), parser)).toEqual([]);
+    });
+
+    it("fails when the snippet's binding is of a kind the rule does not cover", () => {
+      // The rule covers `named` only; the snippet is a default import.
+      expect(
+        exportRulesFailingTheirProbe(compile([sourced(DEFAULT, "default")]), parser).map(
+          (rule) => rule.name,
+        ),
+      ).toEqual(["bus-factories-at-composition-roots"]);
+    });
+
+    it("passes a default-kind rule against a default import", () => {
+      // No `symbols`: the rule bans the binding form, not a name.
+      const { symbols: _named, ...formless } = sourced(DEFAULT, "default");
+      const rule: ExportRule = { ...formless, kinds: ["default"] };
+      expect(exportRulesFailingTheirProbe(compile([rule]), parser)).toEqual([]);
+    });
+
+    it("fails when the parser reads nothing out of the snippet", () => {
+      expect(
+        exportRulesFailingTheirProbe(compile([sourced("not a form the parser reads")]), parser).map(
+          (rule) => rule.name,
+        ),
+      ).toEqual(["bus-factories-at-composition-roots"]);
+    });
   });
 });
 
@@ -207,8 +263,8 @@ describe("exportRulesFailingTheirProbe", () => {
       probe: { ...busFactories.probe, from: "packages/web/features/todos/todos.view.tsx" },
     };
 
-    expect(exportRulesFailingTheirProbe(compile([unselectable])).map((rule) => rule.name)).toEqual([
-      "bus-factories-at-composition-roots",
-    ]);
+    expect(
+      exportRulesFailingTheirProbe(compile([unselectable]), NO_PARSER).map((rule) => rule.name),
+    ).toEqual(["bus-factories-at-composition-roots"]);
   });
 });

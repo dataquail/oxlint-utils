@@ -2,7 +2,9 @@ import * as Result from "effect/Result";
 
 import type { BindingKind, ExportProbe, ExportRule } from "../domain/architecture-config.js";
 import type { ImportUnresolved, PatternInvalid } from "../domain/architecture-error.js";
+import type { Binding } from "../domain/facts.js";
 import type { Violation } from "../domain/violation.js";
+import type { FactExtractor } from "../ports/fact-extractor.js";
 import type { ModuleResolver } from "../ports/module-resolver.js";
 import {
   compilePatterns,
@@ -11,6 +13,8 @@ import {
   targetAllowed,
   validateTargetPatterns,
 } from "./patterns.js";
+
+export type { Binding } from "../domain/facts.js";
 
 const DEFAULT_KINDS: ReadonlyArray<BindingKind> = ["named"];
 
@@ -65,13 +69,6 @@ export const compileExportRules = (
     compiled.push(one.success);
   }
   return Result.succeed(compiled);
-};
-
-// One name pulled across one import edge: `import { makeCommandBus } from "…"`
-// is a single binding, and so is the `Effect` in `import { Effect } from "effect"`.
-export type Binding = {
-  readonly symbol: string;
-  readonly kind: BindingKind;
 };
 
 export type BindingEdge = {
@@ -150,15 +147,25 @@ export const evaluateBindingEdge = (
 ): Result.Result<ReadonlyArray<ExportViolation>, ImportUnresolved> =>
   evaluateSelectedBindings(exportRulesSelecting(rules, edge.importer), resolver, edge);
 
+// A probe with a `source` is checked through the parser: every edge in the
+// snippet is taken to resolve to `probe.to`, and a binding named `probe.symbol`
+// must come out of the extractor covered by the rule. A probe without one is
+// checked against the rule's patterns alone.
 export const exportRulesFailingTheirProbe = (
   rules: ReadonlyArray<CompiledExportRule>,
+  extractor: FactExtractor,
 ): ReadonlyArray<CompiledExportRule> =>
   rules.filter((rule) => {
     const captures = firstFromMatch(rule, rule.probe.from);
     if (captures === null) return true;
     if (!targetAllowed(rule, captures, rule.probe.to)) return true;
-    return !covers(rule, {
-      symbol: rule.probe.symbol,
-      kind: rule.probe.kind ?? "named",
-    });
+
+    if (rule.probe.source === undefined) {
+      return !covers(rule, { symbol: rule.probe.symbol, kind: rule.probe.kind ?? "named" });
+    }
+    const facts = extractor.factsOf(rule.probe.from, rule.probe.source);
+    const bindings = [...facts.bindings.values()].flat();
+    return !bindings.some(
+      (binding) => binding.symbol === rule.probe.symbol && covers(rule, binding),
+    );
   });

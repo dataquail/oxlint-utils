@@ -131,7 +131,7 @@ export default {
               imports: {
                 message:
                   "An adapter implements a port. It reaches the port it satisfies, the domain types in that signature, and its own siblings.",
-                external: ["unrs-resolver"],
+                external: ["unrs-resolver", "typescript"],
                 allow: ["@arch/domain/**", "@arch/ports/**", "@arch/infrastructure/**"],
               },
             },

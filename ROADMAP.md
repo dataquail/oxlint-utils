@@ -87,11 +87,19 @@ rule to fire on the named site. The synthetic form stays as the default so no ex
 changes; the fixture form is what an author reaches for when the rule is about a declaration
 shape. Same for `exports` probes (a `source` import statement) and `imports` probes.
 
-- `domain/architecture-config.ts`: widen the four `*Probe` schemas.
+- `domain/architecture-config.ts`: widen the `*Probe` schemas.
 - `manifest/compile.ts`: pass `source` through lowering.
 - Probe evaluation moves from pure-core to "core, given facts" — the adapters supply an
   `extractFacts(source)` function through a small port so `core/` still reads no files.
 - Docs: `enforcement/probes.mdx` gets a section on when to use which form.
+
+**As landed:** `members` and `exports` only, with `name`/`symbol` required so the check is
+"this source, this name, must be reported". No `imports` form — what it would prove (a
+syntax is an edge) is pinned for every rule by the parity suite. The extractor at load is
+the TypeScript one (`infrastructure/fact-extractor-live.ts`, behind a `FactExtractor` port)
+for both adapters; there is no oxc parser in the tree, and parity is what holds oxlint's
+visitor to it. `config-loader.test.ts` carries the demonstration: the same rule probed with a
+bare alias loads and probed with an `interface` is refused.
 
 ---
 
@@ -265,7 +273,7 @@ adapters, core tests, a fixture in the parity corpus, the relevant `website/…/
 page, and — where the family has one — a rule in the root `architecture.config.mjs`.
 
 ```
-Phase 0  facts cmd → parity test (+F3 fix) → fixture probes
+Phase 0  facts cmd → parity test (+F3 fix) → fixture probes   [done]
 Phase 1  widen type-members → kinds + export * → dogfood members/exports
 Phase 2  surface family
 Phase 3  graph pass → cycles → orphans → reach

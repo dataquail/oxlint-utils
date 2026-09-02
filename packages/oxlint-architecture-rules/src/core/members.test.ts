@@ -2,6 +2,7 @@ import * as Result from "effect/Result";
 import { describe, expect, it } from "vitest";
 
 import type { MemberRule } from "../domain/architecture-config.js";
+import { makeFactExtractorFake } from "../infrastructure/fact-extractor-fake.js";
 import {
   compileMemberRules,
   evaluateMemberSite,
@@ -126,30 +127,83 @@ describe("evaluateMemberSite", () => {
   });
 });
 
+// A synthetic probe never meets a parser, so the checks above need none.
+const NO_PARSER = makeFactExtractorFake({});
+
 describe("memberRulesFailingTheirProbe", () => {
   it("passes rules that report their own probes", () => {
-    expect(memberRulesFailingTheirProbe(compile([dumbReads, viewHooks]))).toEqual([]);
+    expect(memberRulesFailingTheirProbe(compile([dumbReads, viewHooks]), NO_PARSER)).toEqual([]);
   });
 
   it("catches a rule whose allowlist has widened to swallow its probe", () => {
     const widened: MemberRule = { ...viewHooks, allow: "^use" };
-    expect(memberRulesFailingTheirProbe(compile([widened])).map((rule) => rule.name)).toEqual([
-      "view-hooks-allowlist",
-    ]);
+    expect(
+      memberRulesFailingTheirProbe(compile([widened]), NO_PARSER).map((rule) => rule.name),
+    ).toEqual(["view-hooks-allowlist"]);
   });
 
   it("catches a rule whose `in` no longer names its probe's declaration", () => {
     const drifted: MemberRule = { ...dumbReads, in: "NeverMatches$" };
-    expect(memberRulesFailingTheirProbe(compile([drifted])).map((rule) => rule.name)).toEqual([
-      "dumb-repository-ports-reads",
-    ]);
+    expect(
+      memberRulesFailingTheirProbe(compile([drifted]), NO_PARSER).map((rule) => rule.name),
+    ).toEqual(["dumb-repository-ports-reads"]);
   });
 
   it("catches a rule whose from side no longer selects its probe", () => {
     const drifted: MemberRule = { ...viewHooks, from: "^packages/server/" };
-    expect(memberRulesFailingTheirProbe(compile([drifted])).map((rule) => rule.name)).toEqual([
-      "view-hooks-allowlist",
-    ]);
+    expect(
+      memberRulesFailingTheirProbe(compile([drifted]), NO_PARSER).map((rule) => rule.name),
+    ).toEqual(["view-hooks-allowlist"]);
+  });
+
+  // A probe with a source is the parser's to satisfy: the snippet must yield a
+  // site of the probe's name that the rule reports. The fake stands in for the
+  // parser and says what each snippet reads as.
+  describe("with a source", () => {
+    const INTERSECTION = "export type TodosRepositoryShape = Base & { findOneById(): void };";
+    const LITERAL = "export type TodosRepositoryShape = { findOneById(): void };";
+    const parser = makeFactExtractorFake({
+      // The parser reads the literal's member, and nothing out of the intersection.
+      [LITERAL]: {
+        specifiers: [],
+        bindings: new Map(),
+        memberSites: [
+          { file: "", subject: "type-members", name: "findOneById", in: "TodosRepositoryShape" },
+        ],
+      },
+    });
+    const sourced = (source: string): MemberRule => ({
+      ...dumbReads,
+      probe: { from: PORT, name: "findOneById", source },
+    });
+
+    it("passes when the parser reads the named site and the rule reports it", () => {
+      expect(memberRulesFailingTheirProbe(compile([sourced(LITERAL)]), parser)).toEqual([]);
+    });
+
+    it("fails when the parser reads no site of that name — the vacuity a synthetic probe cannot see", () => {
+      expect(
+        memberRulesFailingTheirProbe(compile([sourced(INTERSECTION)]), parser).map(
+          (rule) => rule.name,
+        ),
+      ).toEqual(["dumb-repository-ports-reads"]);
+    });
+
+    it("fails when the parser reads the site but the rule admits it", () => {
+      const widened: MemberRule = { ...sourced(LITERAL), allow: "^find" };
+      expect(
+        memberRulesFailingTheirProbe(compile([widened]), parser).map((rule) => rule.name),
+      ).toEqual(["dumb-repository-ports-reads"]);
+    });
+
+    it("judges the declaration by what the parser read, not by the probe's own `in`", () => {
+      // The synthetic `in` is meaningless once a source is present: the site
+      // carries the declaration it was found in.
+      const drifted: MemberRule = { ...sourced(LITERAL), in: "NeverMatches$" };
+      expect(
+        memberRulesFailingTheirProbe(compile([drifted]), parser).map((rule) => rule.name),
+      ).toEqual(["dumb-repository-ports-reads"]);
+    });
   });
 });
 

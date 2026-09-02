@@ -32,6 +32,7 @@ constraint is not about which modules are reached at all.
 | `matchNot` | names carved back out of `match`                                   |
 | `allow`    | names permitted; anything matched and not allowed is the violation |
 | `message`  | why. `{name}` is substituted with the offending name               |
+| `probe`    | `{ source, name }` — a snippet the rule must report `name` out of  |
 
 `match`/`matchNot` narrow _what the rule is about_; `allow` says which of those are fine.
 Either side can carry the exemption — the `find*` example above uses `matchNot`, and a hook
@@ -78,6 +79,25 @@ exist in the glob language: it means _a hook_, without also matching `user` or `
 right trade for a rule about a naming convention, since the convention is what it is
 policing.
 :::
+
+## Proving the rule reads your shape
+
+`type-members` reads the members of a bare `type X = { … }` alias. An `interface`, a class
+body, and an intersection like `type X = Base & { … }` are not read today, and a rule about
+one of them would pass its generated probe while reporting nothing.
+
+An authored `probe` closes that: the snippet is parsed at load, and the rule must report
+`name` out of what the parser read, or the policy refuses to load.
+
+```js
+probe: {
+  source: "export type TodosRepositoryShape = { findOneByEmail(): void };",
+  name: "findOneByEmail",
+},
+```
+
+Write it in the shape your real ports take. See
+[Probes](/oxlint-utils/architecture-rules/enforcement/probes/#writing-the-probe-yourself).
 
 ## Several rules on one node
 

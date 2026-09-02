@@ -15,9 +15,9 @@ import { compileImportRules, evaluateSelectedEdge, rulesSelecting } from "../cor
 import { compileMemberRules, evaluateMemberSite, memberRulesSelecting } from "../core/members.js";
 import { EMPTY_STRUCTURE } from "../core/structure.js";
 import { formatMessage } from "../domain/violation.js";
+import { factsOfText } from "../infrastructure/fact-extractor-live.js";
 import { makeFileSystemFake } from "../infrastructure/file-system-fake.js";
 import { makeModuleResolverFake } from "../infrastructure/module-resolver-fake.js";
-import { sourceFactsOfText } from "./cli/source-facts.js";
 import type { LoadedPolicy } from "./oxlint/config-loader.js";
 import { makeExportsRule } from "./oxlint/exports-rule.js";
 import { makeImportsRule } from "./oxlint/imports-rule.js";
@@ -181,7 +181,7 @@ const unwrap = <A, E>(result: Result.Result<A, E>): A => {
 
 const cliFacts = CORPUS.map((fixture) => ({
   fixture,
-  facts: sourceFactsOfText(fixture.file, fixture.code),
+  facts: factsOfText(fixture.file, fixture.code),
 }));
 
 // Every specifier the CLI found resolves somewhere. One the plugin finds and the
