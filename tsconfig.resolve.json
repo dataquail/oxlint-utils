@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    // Resolution-only config, consumed by the `architecture` plugin
+    // (`architecture.config.mjs`, `resolve.scopes`). It mirrors
+    // tsconfig.base.json's `paths` but WITHOUT the trailing extension those
+    // carry: a mapped target is a template, so `pkg/x.js` against a `.ts`-suffixed
+    // mapping would look for `x.ts` spelled `x.js.ts`. Keep these extensionless —
+    // the resolver maps `.js` to `.ts` on the specifier itself. An import that
+    // fails to resolve is a hard lint error precisely because a silently
+    // unresolved import voids every path rule about that package.
+    //
+    // Node resolution cannot serve as a fallback either: the workspace links
+    // each package to its own `build/`, which only exists after a build.
+    "paths": {
+      "oxlint-architecture-rules": ["./packages/oxlint-architecture-rules/src/index.ts"],
+      "oxlint-architecture-rules/*": ["./packages/oxlint-architecture-rules/src/*"]
+    },
+    "moduleResolution": "NodeNext",
+    "module": "NodeNext",
+    "target": "ES2022"
+  }
+}

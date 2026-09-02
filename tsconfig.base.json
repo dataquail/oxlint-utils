@@ -1,0 +1,58 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "moduleDetection": "force",
+    "composite": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "declaration": true,
+    "skipLibCheck": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "types": [],
+    "isolatedModules": true,
+    "sourceMap": true,
+    "declarationMap": true,
+    "noImplicitReturns": false,
+    "noUnusedLocals": true,
+    "noUnusedParameters": false,
+    "noFallthroughCasesInSwitch": true,
+    "noEmitOnError": false,
+    "noErrorTruncation": false,
+    "allowJs": false,
+    "checkJs": false,
+    "forceConsistentCasingInFileNames": true,
+    "noImplicitAny": true,
+    "noImplicitThis": true,
+    "noUncheckedIndexedAccess": true,
+    "strictNullChecks": true,
+    "target": "ES2022",
+    "module": "NodeNext",
+    "incremental": true,
+    "removeComments": false,
+    "plugins": [
+      {
+        "name": "@effect/language-service"
+      }
+    ],
+    // Targets are `.ts`, not the `.js` a consumer would import. A `.js` target
+    // only resolves when the file is already in the compiling program, which is
+    // true within a package and false across one, where the importing package
+    // would find a `src/index.js` that does not exist and fall back to `any`.
+    // Naming the `.ts` lets TypeScript find it, and the project reference in the
+    // importing package's tsconfig is what then redirects it to that project's
+    // declaration output. These are build-time only — nothing here is ever
+    // emitted into a specifier.
+    //
+    // `oxlint-architecture-rules` itself opts out: its own tsconfigs reset
+    // `paths` to `{}`, because oxlint loads the emitted JavaScript with a bare
+    // `import()` and tsc does not rewrite path aliases on emit.
+    "paths": {
+      "oxlint-architecture-rules": ["./packages/oxlint-architecture-rules/src/index.ts"],
+      "oxlint-architecture-rules/*": ["./packages/oxlint-architecture-rules/src/*.ts"]
+    }
+  }
+}
