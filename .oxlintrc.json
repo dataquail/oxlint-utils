@@ -30,6 +30,7 @@
     "es2018": true
   },
   "ignorePatterns": [
+    "packages/*/.tmp-*/**",
     "**/dist",
     "**/build",
     "**/docs",
@@ -227,6 +228,7 @@
     "architecture/exports": "error",
     "architecture/members": "error",
     "architecture/structure": "error",
+    "architecture/surface": "error",
     "local/prefer-named-exports": "error",
     "local/no-array-push-spread": "error",
     "no-use-before-define": "warn",

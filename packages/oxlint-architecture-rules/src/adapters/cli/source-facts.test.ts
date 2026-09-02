@@ -86,6 +86,74 @@ describe("bindings", () => {
   });
 });
 
+describe("whole-module bindings", () => {
+  const whole = [{ symbol: "*", kind: "namespace" }];
+
+  it.each([
+    ['export * from "m";', "export *"],
+    ['export * as ns from "m";', "export * as"],
+    ['import x = require("m");', "import ="],
+    ['const m = await import("m");', "import()"],
+    ['const m = require("m");', "require()"],
+  ])("%s carries the whole module, as `import * as` does", (source) => {
+    expect(factsFor(source).bindings.get("m")).toEqual(whole);
+  });
+
+  it("a side-effect import carries nothing", () => {
+    expect(factsFor('import "m";').bindings.get("m")).toEqual([]);
+  });
+});
+
+describe("export sites", () => {
+  const surface = (source: string) =>
+    factsFor(source).exportSites.map(
+      (site) => `${site.kind}:${site.name}:${site.declares}${site.reexport ? ":re" : ""}`,
+    );
+
+  it("reads a declaration's exported names with what they were declared as", () => {
+    expect(surface(`export const a = 1, b = 2; export function f() {} export class C {}`)).toEqual([
+      "named:a:variable",
+      "named:b:variable",
+      "named:f:function",
+      "named:C:class",
+    ]);
+  });
+
+  it("names a local export by its exported name, and looks up what it declares", () => {
+    expect(surface(`function f() {} export { f as g, f as default };`)).toEqual([
+      "named:g:function",
+      "default:default:function",
+    ]);
+  });
+
+  it("reads a default export's declaration, or `expression` when it has none", () => {
+    expect(surface(`export default function () {}`)).toEqual(["default:default:function"]);
+    expect(surface(`export default 1 + 1;`)).toEqual(["default:default:expression"]);
+    expect(surface(`const x = 1; export default x;`)).toEqual(["default:default:variable"]);
+  });
+
+  it("reads a re-export as `other`, since its declaration is elsewhere", () => {
+    expect(
+      surface(`export { a, b as c } from "m"; export * from "m"; export * as n from "m";`),
+    ).toEqual([
+      "named:a:other:re",
+      "named:c:other:re",
+      "namespace:*:other:re",
+      "namespace:n:other:re",
+    ]);
+  });
+
+  it("reads the top level only — an export inside a namespace is not the module's", () => {
+    expect(
+      surface(`namespace N { export const inner = 1; } export namespace M { export const y = 2; }`),
+    ).toEqual(["named:M:other"]);
+  });
+
+  it("does not read `export =` — a CommonJS surface", () => {
+    expect(surface(`const x = 1; export = x;`)).toEqual([]);
+  });
+});
+
 describe("member sites", () => {
   it("reads the members of a type alias, and the alias they sit in", () => {
     expect(
@@ -124,6 +192,50 @@ describe("member sites", () => {
       "tsx",
     ).memberSites.map((site) => site.name);
     expect(names).toContain("useState");
+  });
+});
+
+describe("declaration shapes", () => {
+  const declared = (source: string) =>
+    factsFor(source).memberSites.map((site) => `${site.in ?? ""}.${site.name}`);
+
+  it("reads an interface's own members, and not the ones it extends", () => {
+    expect(declared(`interface A { a(): void } interface B extends A { b(): void }`)).toEqual([
+      "A.a",
+      "B.b",
+    ]);
+  });
+
+  it("reads the literal half of an intersection under the alias's own name", () => {
+    expect(declared(`type Base = { a(): void }; type Port = Base & { b(): void };`)).toEqual([
+      "Base.a",
+      "Port.b",
+    ]);
+  });
+
+  it("reads every constituent of a union", () => {
+    expect(declared(`type E = { left(): void } | { right(): void };`)).toEqual([
+      "E.left",
+      "E.right",
+    ]);
+  });
+
+  it("reads through parentheses", () => {
+    expect(declared(`type P = ({ a(): void } & { b(): void });`)).toEqual(["P.a", "P.b"]);
+  });
+
+  it("does not follow a reference — its members are declared where it is", () => {
+    expect(declared(`type Base = { a(): void }; type Port = Base;`)).toEqual(["Base.a"]);
+  });
+
+  it("steps over an interface's call and construct signatures", () => {
+    expect(declared(`interface F { (x: number): void; new (x: number): F; own(): void }`)).toEqual([
+      "F.own",
+    ]);
+  });
+
+  it("does not read a class body — a class is not a type declaration", () => {
+    expect(declared(`class K { k(): void {} }`)).toEqual([]);
   });
 });
 

@@ -15,7 +15,7 @@ which ships its own native binary; there is nothing else to configure at the OS 
 ## Wire it into oxlint
 
 oxlint loads JS plugins with a bare dynamic `import()`, so the plugin is registered by
-specifier and its four rules are enabled by id:
+specifier and its five rules are enabled by id:
 
 ```json
 // .oxlintrc.json
@@ -26,6 +26,7 @@ specifier and its four rules are enabled by id:
     "architecture/exports": "error",
     "architecture/members": "error",
     "architecture/structure": "error",
+    "architecture/surface": "error",
     "import/no-cycle": "error"
   }
 }

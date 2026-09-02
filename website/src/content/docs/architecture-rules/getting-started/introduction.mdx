@@ -12,7 +12,7 @@ They are the same mechanism. Each one matches a fact about a file — its path, 
 it imports, the names it declares or calls, the siblings beside it on disk — against a
 policy, and reports a message. Only the fact-gathering differs.
 
-This package is that mechanism, once. One config file, one oxlint plugin, four rule
+This package is that mechanism, once. One config file, one oxlint plugin, one CLI, six rule
 families.
 
 ## What it enforces
@@ -23,9 +23,20 @@ families.
 | Who may reach it?                              | `imports`   |
 | Which importers may name this exported symbol? | `exports`   |
 | Which names may this file declare or call?     | `members`   |
+| What may this file export?                     | `surface`   |
 | Which files may live in this folder?           | `structure` |
 | What may they be called?                       | `structure` |
 | Which siblings does this file owe?             | `structure` |
+| Do any files import each other?                | `graph`     |
+| Does anything import this file?                | `graph`     |
+| Can this tier reach that one, by any route?    | `graph`     |
+
+The first five are evaluated by the oxlint plugin and the CLI alike. `graph` is a question
+about the whole repository, and only the [CLI](/oxlint-utils/architecture-rules/enforcement/cli/)
+sees every file at once. Above the families sit two ratchets on the policy itself — the
+[baseline](/oxlint-utils/architecture-rules/enforcement/baseline/) on the violations the code
+carries, and [`limits`](/oxlint-utils/architecture-rules/enforcement/adoption/) on how much of
+the tree the rules reach.
 
 ## The two properties everything rests on
 
@@ -37,8 +48,9 @@ because an edge nobody can resolve is an edge no rule can police — and failing
 would disarm every rule about a package at once, without changing a line of config.
 
 **Every rule proves it can still fire.** The manifest compiles to flat rules, and each one
-carries a probe path generated from its own node in the tree. The plugin refuses to load
-if any rule fails its own probe. A vacuous rule — one whose pattern has drifted until it
+carries a probe generated from its own node in the tree — or, for a rule about a declaration
+shape, a source snippet you write that the parser must read the violation out of. The plugin
+refuses to load if any rule fails its own probe. A vacuous rule — one whose pattern has drifted until it
 matches nothing — is the failure mode that makes architectural linting worse than no
 linting at all, because it is indistinguishable from a clean build.
 

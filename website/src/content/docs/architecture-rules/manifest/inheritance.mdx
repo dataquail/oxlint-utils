@@ -38,6 +38,14 @@ narrow:
 },
 ```
 
+## `members` and `surface` on a folder
+
+Neither is merged down the tree the way an allowlist is. Stated on a folder, a `members` or
+`surface` rule **covers the subtree** — every file under the folder is selected by it — and a
+descendant stating its own adds a second rule rather than replacing the first. Both fire.
+A vocabulary is a statement about every file in a tier, and a narrower one below it is a
+second statement, not an exemption.
+
 ## `name` inherits the same way
 
 A naming convention is inherited by the whole subtree, and a descendant that states its own

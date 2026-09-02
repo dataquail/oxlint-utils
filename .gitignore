@@ -60,7 +60,7 @@ website/dist
 # Scratch config files written by the config-loader tests. They live inside the
 # package because Vitest resolves the loader's dynamic import through its own
 # module graph, which does not reach outside the project root.
-packages/*/.tmp-config-tests
+packages/*/.tmp-*
 
 # Notes
 /docs/scratch

@@ -13,12 +13,17 @@ import {
   staleEntriesOf,
   unbaselined,
 } from "../../core/baseline.js";
+import { coverageOf, coverageShortfalls, fractionsOf } from "../../core/coverage.js";
 import { evaluateSelectedBindings, exportRulesSelecting } from "../../core/exports.js";
+import { evaluateGraph, hasGraphRules } from "../../core/graph.js";
 import { evaluateSelectedEdge, rulesSelecting } from "../../core/imports.js";
 import { evaluateMemberSite, memberRulesSelecting } from "../../core/members.js";
 import { evaluateStructure, requiredSiblingsOf } from "../../core/structure.js";
+import { evaluateSurface, surfaceRulesSelecting } from "../../core/surface.js";
+import type { SourceFacts } from "../../domain/facts.js";
 import { fingerprintOf, formatMessage, type Violation } from "../../domain/violation.js";
 import { type LoadedPolicy, loadPolicy } from "../oxlint/config-loader.js";
+import { buildGraph } from "./graph.js";
 import { sourceFactsOf } from "./source-facts.js";
 import { listSourceFiles } from "./source-files.js";
 
@@ -49,6 +54,28 @@ export const collectFindings = (policy: LoadedPolicy, roots: ReadonlyArray<strin
   const violations: Array<Violation> = [];
   const unresolved: Array<string> = [];
 
+  // Each file is parsed at most once, whether the per-file families or the
+  // graph pass asks first.
+  const parsed = new Map<string, SourceFacts>();
+  const factsOf = (file: string): SourceFacts => {
+    const cached = parsed.get(file);
+    if (cached !== undefined) return cached;
+    const facts = sourceFactsOf(policy.repoRoot, file);
+    parsed.set(file, facts);
+    return facts;
+  };
+
+  // The graph is the whole repository resolved at once — the one question no
+  // per-file adapter can ask — and is built only when a rule needs it.
+  if (hasGraphRules(policy.graph)) {
+    for (const violation of evaluateGraph(
+      policy.graph,
+      buildGraph(files, policy.resolver, factsOf),
+    )) {
+      violations.push(violation);
+    }
+  }
+
   for (const file of files) {
     for (const violation of evaluateStructure(policy.structure, policy.fileSystem, file)) {
       violations.push(violation);
@@ -57,9 +84,22 @@ export const collectFindings = (policy: LoadedPolicy, roots: ReadonlyArray<strin
     const selectedImports = rulesSelecting(policy.importRules, file);
     const selectedExports = exportRulesSelecting(policy.exportRules, file);
     const selectedMembers = memberRulesSelecting(policy.memberRules, file);
-    if (selectedImports.length + selectedExports.length + selectedMembers.length === 0) continue;
+    const selectedSurface = surfaceRulesSelecting(policy.surfaceRules, file);
+    if (
+      selectedImports.length +
+        selectedExports.length +
+        selectedMembers.length +
+        selectedSurface.length ===
+      0
+    ) {
+      continue;
+    }
 
-    const facts = sourceFactsOf(policy.repoRoot, file);
+    const facts = factsOf(file);
+
+    for (const violation of evaluateSurface(selectedSurface, file, facts.exportSites)) {
+      violations.push(violation);
+    }
 
     for (const site of facts.memberSites) {
       for (const violation of evaluateMemberSite(selectedMembers, site)) violations.push(violation);
@@ -147,9 +187,72 @@ export const check = (
       return yield* Effect.fail(fail("stale baseline entries"));
     }
 
+    // The floors. A policy states how much of the tree it reaches, per
+    // family; falling under is a policy that quietly stopped covering files.
+    const floors = policy.config.limits?.coverage;
+    const shortfalls =
+      floors === undefined
+        ? []
+        : coverageShortfalls(coverageOf(policy, listSourceFiles(policy.repoRoot, roots)), floors);
+    if (shortfalls.length > 0) {
+      yield* report([
+        "",
+        "coverage is below the floor the policy states for itself:",
+        ...shortfalls.map(
+          (one) => `  ${one.family}: ${percent(one.actual)} covered, floor ${percent(one.floor)}`,
+        ),
+        "",
+        "  architecture coverage    # which files no rule reaches",
+      ]);
+      return yield* Effect.fail(fail("coverage below floor"));
+    }
+
     if (reportable.length > 0 || findings.unresolved.length > 0) {
       return yield* Effect.fail(fail("architecture violations"));
     }
+  });
+
+const percent = (fraction: number): string => `${String(Math.floor(fraction * 100))}%`;
+
+// How much of the tree the policy reaches. A probe proves a rule can fire;
+// this is whether the files are there to fire on. Reported per family, with the
+// adoption backlog — the tiers that said "not tightened yet" — beneath it.
+export const coverage = (
+  policy: LoadedPolicy,
+  roots: ReadonlyArray<string>,
+): Effect.Effect<void, CliFailure> =>
+  Effect.gen(function* () {
+    const files = listSourceFiles(policy.repoRoot, roots);
+    const found = coverageOf(policy, files);
+    const fractions = fractionsOf(found);
+    const floors = policy.config.limits?.coverage ?? {};
+    const row = (family: keyof typeof fractions, covered: number, note: string): string => {
+      const floor = floors[family];
+      const mark =
+        floor === undefined
+          ? ""
+          : fractions[family] >= floor
+            ? `  ≥ ${percent(floor)} ✓`
+            : `  < ${percent(floor)} ✗`;
+      return `  ${family.padEnd(10)} ${String(covered).padStart(5)}/${String(found.files)}  ${percent(fractions[family]).padStart(4)}  ${note}${mark}`;
+    };
+
+    yield* report([
+      `${String(found.files)} files under ${roots.join(", ")}`,
+      "",
+      row("imports", found.imports.covered, "under an import allowlist"),
+      row(
+        "structure",
+        found.structure.enumerated,
+        `in an enumerated folder (${String(found.structure.open)} in an open one, ${String(found.structure.total - found.structure.enumerated - found.structure.open)} in none)`,
+      ),
+      row("members", found.members.covered, "selected by a members rule"),
+      row("surface", found.surface.covered, "selected by a surface rule"),
+      row("graph", found.graph.covered, "in a cycles or orphans scope"),
+      "",
+      `  unrestricted tiers: ${policy.adoption.unrestricted.length === 0 ? "(none)" : policy.adoption.unrestricted.join(", ")}`,
+      `  partial tiers:      ${policy.adoption.partial.length === 0 ? "(none)" : policy.adoption.partial.join(", ")}`,
+    ]);
   });
 
 export const writeBaseline = (
@@ -206,6 +309,30 @@ export const explain = (policy: LoadedPolicy, file: string): Effect.Effect<void,
     );
 
     const firstSentence = (message: string) => `${message.split(". ")[0] ?? message}.`;
+    const named = (rule: { readonly name: string; readonly message: string }): string =>
+      `    ${rule.name} — ${firstSentence(rule.message)}`;
+
+    // The families beyond imports and structure: which rules of each speak to
+    // this file at all. What they are evaluated against is `facts`' answer.
+    const restricted = exportRulesSelecting(policy.exportRules, relative).map(([rule]) => rule);
+    const vocabulary = memberRulesSelecting(policy.memberRules, relative);
+    const surface = surfaceRulesSelecting(policy.surfaceRules, relative);
+    const scoped = (rule: { within: ReadonlyArray<RegExp>; withinNot: ReadonlyArray<RegExp> }) =>
+      rule.within.some((pattern) => pattern.test(relative)) &&
+      !rule.withinNot.some((pattern) => pattern.test(relative));
+    const graph = [
+      ...policy.graph.cycles.filter(scoped).map((rule) => `${named(rule)} (cycles)`),
+      ...policy.graph.orphans.filter(scoped).map((rule) => `${named(rule)} (orphans)`),
+      ...policy.graph.reach
+        .filter(
+          (rule) =>
+            rule.from.some((pattern) => pattern.test(relative)) &&
+            !rule.fromNot.some((pattern) => pattern.test(relative)),
+        )
+        .map((rule) => `${named(rule)} (reach)`),
+    ];
+    const section = (title: string, lines: ReadonlyArray<string>): ReadonlyArray<string> =>
+      lines.length === 0 ? [] : ["", title, ...lines];
 
     yield* report([
       relative,
@@ -234,6 +361,73 @@ export const explain = (policy: LoadedPolicy, file: string): Effect.Effect<void,
             ),
           ]),
       ...(owed.length === 0 ? [] : ["  owes:", ...owed.map((one) => `    ${one}`)]),
+      ...section("  may not name (exports):", restricted.map(named)),
+      ...section("  vocabulary (members):", vocabulary.map(named)),
+      ...section("  may export (surface):", surface.map(named)),
+      ...section("  graph:", graph),
+    ]);
+  });
+
+// The other half of `explain`. `explain` says which rules select a file; this
+// says what those rules are evaluated against — every edge the parser found,
+// the names carried across each, every declared member and called name. A rule
+// that "should fire" and does not is one of two mistakes, and this is how to
+// tell them apart: the pattern does not select the site, or the site is not a
+// fact the adapter extracts.
+export const facts = (
+  policy: LoadedPolicy,
+  file: string,
+  format: "text" | "json" = "text",
+): Effect.Effect<void, CliFailure> =>
+  Effect.gen(function* () {
+    const relative = path
+      .relative(policy.repoRoot, path.resolve(policy.repoRoot, file))
+      .replaceAll(path.sep, "/");
+
+    const read = yield* Effect.try({
+      try: () => sourceFactsOf(policy.repoRoot, relative),
+      catch: (cause) => fail(`could not read ${relative}: ${String(cause)}`),
+    });
+
+    const edges = read.specifiers.map((specifier) => ({
+      specifier,
+      bindings: read.bindings.get(specifier) ?? [],
+    }));
+    const declared = read.memberSites.filter((site) => site.subject === "type-members");
+    const called = read.memberSites.filter((site) => site.subject === "calls");
+
+    if (format === "json") {
+      return yield* report([
+        JSON.stringify(
+          { file: relative, edges, memberSites: read.memberSites, exportSites: read.exportSites },
+          null,
+          2,
+        ),
+      ]);
+    }
+
+    yield* report([
+      relative,
+      "",
+      edges.length === 0 ? "  edges: (none)" : "  edges:",
+      ...edges.flatMap(({ bindings, specifier }) => [
+        `    ${specifier}`,
+        ...(bindings.length === 0
+          ? ["        (no bindings)"]
+          : bindings.map((binding) => `        ${binding.kind.padEnd(9)} ${binding.symbol}`)),
+      ]),
+      "",
+      declared.length === 0 ? "  type-members: (none)" : "  type-members:",
+      ...declared.map((site) => `    ${site.in ?? ""}.${site.name}`),
+      "",
+      called.length === 0 ? "  calls: (none)" : "  calls:",
+      ...called.map((site) => `    ${site.name}`),
+      "",
+      read.exportSites.length === 0 ? "  exports: (none)" : "  exports:",
+      ...read.exportSites.map(
+        (site) =>
+          `    ${site.kind.padEnd(9)} ${site.name}  (${site.reexport ? "re-export" : site.declares})`,
+      ),
     ]);
   });
 
@@ -260,9 +454,18 @@ export const run = (
         if (file === undefined) return yield* Effect.fail(fail("explain needs a file path"));
         return yield* explain(policy, file);
       }
+      case "coverage":
+        return yield* coverage(policy, roots);
+      case "facts": {
+        const [file] = rest.filter((argument) => argument !== "--json");
+        if (file === undefined) return yield* Effect.fail(fail("facts needs a file path"));
+        return yield* facts(policy, file, rest.includes("--json") ? "json" : "text");
+      }
       default:
         return yield* Effect.fail(
-          fail(`unknown command "${command}". Try: check | baseline | explain <file>`),
+          fail(
+            `unknown command "${command}". Try: check | baseline | coverage | explain <file> | facts <file> [--json]`,
+          ),
         );
     }
   });

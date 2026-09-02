@@ -24,24 +24,59 @@ type MemberNode = ReportableNode & {
   readonly computed?: boolean;
 };
 
+// A type, as far as this rule reads it: a literal with members, or an
+// intersection / union / parenthesised type wrapping others.
+type TypeNode = ReportableNode & {
+  readonly type: string;
+  readonly members?: ReadonlyArray<MemberNode>;
+  readonly types?: ReadonlyArray<TypeNode>;
+  readonly typeAnnotation?: TypeNode | null;
+};
+
 type TypeAliasNode = ReportableNode & {
   readonly id?: NamedNode | null;
-  readonly typeAnnotation?:
-    | (ReportableNode & { readonly type: string; readonly members?: ReadonlyArray<MemberNode> })
-    | null;
+  readonly typeAnnotation?: TypeNode | null;
 };
+
+// Every visitor takes the whole `Node` union, so `body` is typed to admit a
+// function body as readily as an interface's, and narrowed below.
+type InterfaceNode = ReportableNode & {
+  readonly id?: NamedNode | null;
+  readonly body?: { readonly type?: string; readonly body?: unknown } | null;
+};
+
+const isMemberList = (value: unknown): value is ReadonlyArray<MemberNode> => Array.isArray(value);
 
 type CallNode = ReportableNode & {
   readonly callee?:
     | (ReportableNode & {
         readonly type: string;
         readonly name?: unknown;
-        readonly property?: NamedNode | null;
+        readonly computed?: boolean;
+        readonly property?: (NamedNode & { readonly type: string }) | null;
       })
     | null;
 };
 
 const DECLARED_MEMBER_TYPES = new Set(["TSPropertySignature", "TSMethodSignature"]);
+
+// The type literals written in a type, through intersections, unions and
+// parentheses. A reference is not followed: its members are declared where it
+// is, and reported there under its own name. Mirrors the CLI's `literalsOf`.
+const literalsOf = (node: TypeNode | null | undefined): ReadonlyArray<TypeNode> => {
+  if (node === null || node === undefined) return [];
+  switch (node.type) {
+    case "TSTypeLiteral":
+      return [node];
+    case "TSIntersectionType":
+    case "TSUnionType":
+      return (node.types ?? []).flatMap(literalsOf);
+    case "TSParenthesizedType":
+      return literalsOf(node.typeAnnotation);
+    default:
+      return [];
+  }
+};
 
 const nameOf = (node: NamedNode | null | undefined): string | null => {
   if (node === null || node === undefined) return null;
@@ -49,11 +84,18 @@ const nameOf = (node: NamedNode | null | undefined): string | null => {
   return typeof node.value === "string" ? node.value : null;
 };
 
+// The name a call is made by: `f()` and `x.f()` are both `f`. `x[f]()` and
+// `x["f"]()` are not — a computed property is not a name a vocabulary rule can
+// speak about — and neither is a private `x.#f()`. The CLI reads the same
+// three cases out of TypeScript's tree; the parity suite keeps them agreeing.
 const calleeName = (node: CallNode): string | null => {
   const callee = node.callee;
   if (callee === null || callee === undefined) return null;
-  if (typeof callee.name === "string") return callee.name;
-  return nameOf(callee.property);
+  if (callee.type === "Identifier" && typeof callee.name === "string") return callee.name;
+  if (callee.type !== "MemberExpression" || callee.computed === true) return null;
+  const property = callee.property;
+  if (property?.type !== "Identifier") return null;
+  return nameOf(property);
 };
 
 export const makeMembersRule = (policy: LoadedPolicy): OxlintRule => ({
@@ -83,6 +125,17 @@ export const makeMembersRule = (policy: LoadedPolicy): OxlintRule => ({
       }
     };
 
+    // The members written in a declaration, under that declaration's name. A
+    // computed key is not a name a vocabulary rule can speak about; neither is
+    // an index, call or construct signature.
+    const declared = (declaration: string, members: ReadonlyArray<MemberNode>): void => {
+      for (const member of members) {
+        if (member.computed === true || !DECLARED_MEMBER_TYPES.has(member.type)) continue;
+        const name = nameOf(member.key);
+        if (name !== null) report(member.key ?? member, name, declaration);
+      }
+    };
+
     return {
       before() {
         file = toRepoRelative(policy.repoRoot, context.filename);
@@ -93,16 +146,17 @@ export const makeMembersRule = (policy: LoadedPolicy): OxlintRule => ({
 
       TSTypeAliasDeclaration(node: TypeAliasNode) {
         const declaration = nameOf(node.id);
-        const annotation = node.typeAnnotation;
-        if (declaration === null || annotation?.type !== "TSTypeLiteral") return;
-
-        for (const member of annotation.members ?? []) {
-          // A computed key is not a name a vocabulary rule can speak about, and
-          // no port in this codebase declares one.
-          if (member.computed === true || !DECLARED_MEMBER_TYPES.has(member.type)) continue;
-          const name = nameOf(member.key);
-          if (name !== null) report(member.key ?? member, name, declaration);
+        if (declaration === null) return;
+        for (const literal of literalsOf(node.typeAnnotation)) {
+          declared(declaration, literal.members ?? []);
         }
+      },
+
+      TSInterfaceDeclaration(node: InterfaceNode) {
+        const declaration = nameOf(node.id);
+        const members = node.body?.body;
+        if (declaration === null || !isMemberList(members)) return;
+        declared(declaration, members);
       },
 
       CallExpression(node: CallNode) {

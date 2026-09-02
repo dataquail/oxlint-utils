@@ -6,6 +6,7 @@ import { RuleTester } from "oxlint/plugins-dev";
 import { describe, it } from "vitest";
 
 import { EMPTY_BASELINE, makeBaselineFilter } from "../../core/baseline.js";
+import { EMPTY_GRAPH_RULES } from "../../core/graph.js";
 import { compileImportRules } from "../../core/imports.js";
 import { EMPTY_STRUCTURE } from "../../core/structure.js";
 import { makeFileSystemFake } from "../../infrastructure/file-system-fake.js";
@@ -48,6 +49,9 @@ const makePolicy = (): LoadedPolicy => {
     exportRules: [],
     memberRules: [],
     structure: EMPTY_STRUCTURE,
+    surfaceRules: [],
+    graph: EMPTY_GRAPH_RULES,
+    adoption: { unrestricted: [], partial: [] },
     fileSystem: makeFileSystemFake([]),
     resolver: makeModuleResolverFake({
       "@org/database": "packages/database/src/index.ts",
@@ -81,6 +85,24 @@ new RuleTester({ cwd: repoRoot }).run("imports", makeImportsRule(makePolicy()), 
     },
     {
       code: 'export * from "@org/database";',
+      filename: DOMAIN_FILE,
+      errors: [{ message: /^\[domain-isolation\]/ }],
+    },
+    // The forms a regex over `import … from` never sees. The CLI adapter has
+    // always read them; the plugin skipping them was a policy that held under
+    // `architecture check` and not under `oxlint`.
+    {
+      code: 'const db = await import("@org/database");',
+      filename: DOMAIN_FILE,
+      errors: [{ message: /^\[domain-isolation\]/ }],
+    },
+    {
+      code: 'const db = require("@org/database");',
+      filename: DOMAIN_FILE,
+      errors: [{ message: /^\[domain-isolation\]/ }],
+    },
+    {
+      code: 'import db = require("@org/database");',
       filename: DOMAIN_FILE,
       errors: [{ message: /^\[domain-isolation\]/ }],
     },

@@ -7,6 +7,7 @@ import { describe, it } from "vitest";
 
 import { EMPTY_BASELINE, makeBaselineFilter } from "../../core/baseline.js";
 import { compileExportRules } from "../../core/exports.js";
+import { EMPTY_GRAPH_RULES } from "../../core/graph.js";
 import { EMPTY_STRUCTURE } from "../../core/structure.js";
 import { makeFileSystemFake } from "../../infrastructure/file-system-fake.js";
 import { makeModuleResolverFake } from "../../infrastructure/module-resolver-fake.js";
@@ -59,6 +60,9 @@ const policy = (): LoadedPolicy => {
     exportRules: exportRules.success,
     memberRules: [],
     structure: EMPTY_STRUCTURE,
+    surfaceRules: [],
+    graph: EMPTY_GRAPH_RULES,
+    adoption: { unrestricted: [], partial: [] },
     fileSystem: makeFileSystemFake([]),
     resolver: makeModuleResolverFake({
       "@effect-server-utils/cqrs": CQRS_BARREL,
@@ -157,5 +161,58 @@ new RuleTester({ cwd: repoRoot }).run(
       { code: 'import { makeCommandBus } from "@effect-server-utils/cqrs";', filename: HANDLER },
     ],
     invalid: [],
+  },
+);
+
+// Every form that takes the whole module at once carries one namespace
+// binding, named `*`. A rule with `kinds: ["namespace"]` and no `symbols` is
+// how a policy forbids the form — including the `export *` that launders every
+// symbol past a `symbols` rule, and the `import()` that names no binding.
+const wholeModulePolicy = (): LoadedPolicy => {
+  const exportRules = compileExportRules([
+    {
+      name: "no-whole-module",
+      message: "Name what you take from the bus package.",
+      probe: {
+        from: "packages/server/src/probe.ts",
+        to: CQRS_BARREL,
+        symbol: "*",
+        kind: "namespace",
+      },
+      from: "^packages/server/src/",
+      to: "/node_modules/@effect-server-utils/cqrs/",
+      kinds: ["namespace"],
+      fix: "subpath-namespace-import",
+    },
+  ]);
+  if (Result.isFailure(exportRules)) throw exportRules.failure;
+  return { ...policy(), exportRules: exportRules.success };
+};
+
+new RuleTester({ cwd: repoRoot }).run(
+  "exports (whole-module forms)",
+  makeExportsRule(wholeModulePolicy()),
+  {
+    valid: [
+      { code: 'import { makeQueryBus } from "@effect-server-utils/cqrs";', filename: HANDLER },
+      { code: 'import bus from "@effect-server-utils/cqrs";', filename: HANDLER },
+      { code: 'import "@effect-server-utils/cqrs";', filename: HANDLER },
+    ],
+    invalid: [
+      'import * as cqrs from "@effect-server-utils/cqrs";',
+      'export * from "@effect-server-utils/cqrs";',
+      'export * as cqrs from "@effect-server-utils/cqrs";',
+      'import cqrs = require("@effect-server-utils/cqrs");',
+      'const cqrs = await import("@effect-server-utils/cqrs");',
+      'const cqrs = require("@effect-server-utils/cqrs");',
+    ].map((code) => ({
+      code,
+      filename: HANDLER,
+      errors: [{ message: /^\[no-whole-module\]/ }],
+      // The rule carries a fix, but the rewrite is `import * as X from
+      // "pkg/<name>"`, which only means something for a named binding. None of
+      // these has one; all are reported and left to the author.
+      output: null,
+    })),
   },
 );

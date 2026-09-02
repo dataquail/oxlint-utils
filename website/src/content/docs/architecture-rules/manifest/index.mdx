@@ -15,23 +15,27 @@ export default {
   aliases: { "@": "packages/server/src", "~": "packages" },
   deny: [/* prohibitions that hold everywhere */],
   exports: [/* who may name a given exported symbol */],
+  graph: {/* cycles, orphans, reach — the whole repository at once */},
+  limits: {/* ceilings on the adoption backlog, floors on coverage */},
   tree: {/* the repository */},
 };
 ```
 
 ## Top level
 
-| Field      | Meaning                                                                                                         |
-| ---------- | --------------------------------------------------------------------------------------------------------------- |
-| `resolve`  | how an import specifier becomes a file — [Resolution](/oxlint-utils/architecture-rules/enforcement/resolution/) |
-| `baseline` | path to the ratchet file — [Baseline](/oxlint-utils/architecture-rules/enforcement/baseline/)                   |
-| `aliases`  | shorthands expanded in every glob, so a pattern reads the way your imports do                                   |
-| `deny`     | prohibitions that hold everywhere, declared once                                                                |
-| `exports`  | which importers may name a given exported symbol                                                                |
-| `tree`     | the manifest proper                                                                                             |
+| Field      | Meaning                                                                                                                             |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `resolve`  | how an import specifier becomes a file — [Resolution](/oxlint-utils/architecture-rules/enforcement/resolution/)                     |
+| `baseline` | path to the ratchet file — [Baseline](/oxlint-utils/architecture-rules/enforcement/baseline/)                                       |
+| `aliases`  | shorthands expanded in every glob, so a pattern reads the way your imports do                                                       |
+| `deny`     | prohibitions that hold everywhere, declared once                                                                                    |
+| `exports`  | which importers may name a given exported symbol                                                                                    |
+| `graph`    | cycles, orphans and transitive reach over the whole import graph — [Graph](/oxlint-utils/architecture-rules/manifest/graph/)        |
+| `limits`   | ceilings on `unrestricted`/`partial` tiers, floors on coverage — [Adoption](/oxlint-utils/architecture-rules/enforcement/adoption/) |
+| `tree`     | the manifest proper                                                                                                                 |
 
-`deny` and `exports` sit above the tree because they are statements about the whole
-repository rather than about a tier. A rule like _"this SQL driver is imported from one
+`deny`, `exports`, `graph` and `limits` sit above the tree because they are statements about
+the whole repository rather than about a tier. A rule like _"this SQL driver is imported from one
 package"_ put on every tree root would be six copies and a seventh forgotten.
 
 `aliases` are pure text substitution applied to every glob before compilation. With
@@ -64,6 +68,7 @@ real.
           allow: ["findOneById", "save", "delete"],
         },
       ],
+      surface: [{ message: "A port exports its type and nothing else.", declares: ["variable", "function", "class"] }],
     },
   },
 },
@@ -75,6 +80,7 @@ real.
 | `imports`     | what may this reach?                            | [Imports](/oxlint-utils/architecture-rules/manifest/imports/)         |
 | `importedBy`  | who may reach this?                             | [Imported by](/oxlint-utils/architecture-rules/manifest/imported-by/) |
 | `members`     | which names may it declare or call?             | [Members](/oxlint-utils/architecture-rules/manifest/members/)         |
+| `surface`     | what may it export?                             | [Surface](/oxlint-utils/architecture-rules/manifest/surface/)         |
 | `name`        | what may the variable part of a name look like? | [Structure](/oxlint-utils/architecture-rules/manifest/structure/)     |
 | `requires`    | which siblings does this file owe?              | [Structure](/oxlint-utils/architecture-rules/manifest/structure/)     |
 | `requiresNot` | which filenames does that obligation skip?      | [Structure](/oxlint-utils/architecture-rules/manifest/structure/)     |

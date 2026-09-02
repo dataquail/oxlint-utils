@@ -2,8 +2,12 @@ import * as Result from "effect/Result";
 
 import type { MemberProbe, MemberRule, MemberSubject } from "../domain/architecture-config.js";
 import type { PatternInvalid } from "../domain/architecture-error.js";
+import type { MemberSite } from "../domain/facts.js";
 import type { Violation } from "../domain/violation.js";
+import type { FactExtractor } from "../ports/fact-extractor.js";
 import { compilePatterns, firstFromMatch } from "./patterns.js";
+
+export type { MemberSite } from "../domain/facts.js";
 
 export type CompiledMemberRule = {
   readonly name: string;
@@ -71,15 +75,6 @@ export const compileMemberRules = (
   return Result.succeed(compiled);
 };
 
-// One declared or called name, and the declaration it sits in (a type alias's
-// name for `type-members`, absent for `calls`).
-export type MemberSite = {
-  readonly file: string;
-  readonly subject: MemberSubject;
-  readonly name: string;
-  readonly in?: string;
-};
-
 const anyMatches = (patterns: ReadonlyArray<RegExp>, value: string): boolean =>
   patterns.some((pattern) => pattern.test(value));
 
@@ -116,16 +111,32 @@ export const evaluateMemberSite = (
   return violations;
 };
 
+// A probe with a `source` is checked through the parser: the snippet must
+// yield a site named `probe.name` that the rule reports. That is the check a
+// synthetic site cannot make — a rule about an `interface` passes its
+// synthetic probe today and reports nothing, because the extractor never hands
+// it an interface member. A probe without a source is checked against the
+// rule's patterns alone.
 export const memberRulesFailingTheirProbe = (
   rules: ReadonlyArray<CompiledMemberRule>,
+  extractor: FactExtractor,
 ): ReadonlyArray<CompiledMemberRule> =>
   rules.filter((rule) => {
-    const site: MemberSite = {
-      file: rule.probe.from,
-      subject: rule.subject,
-      name: rule.probe.name,
-      ...(rule.probe.in === undefined ? {} : { in: rule.probe.in }),
-    };
-    if (firstFromMatch(rule, site.file) === null) return true;
-    return evaluateMemberSite([rule], site).length === 0;
+    if (firstFromMatch(rule, rule.probe.from) === null) return true;
+
+    const sites: ReadonlyArray<MemberSite> =
+      rule.probe.source === undefined
+        ? [
+            {
+              file: rule.probe.from,
+              subject: rule.subject,
+              name: rule.probe.name,
+              ...(rule.probe.in === undefined ? {} : { in: rule.probe.in }),
+            },
+          ]
+        : extractor
+            .factsOf(rule.probe.from, rule.probe.source)
+            .memberSites.filter((site) => site.name === rule.probe.name);
+
+    return !sites.some((site) => evaluateMemberSite([rule], site).length > 0);
   });

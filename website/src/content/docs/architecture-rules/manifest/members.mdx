@@ -32,6 +32,7 @@ constraint is not about which modules are reached at all.
 | `matchNot` | names carved back out of `match`                                   |
 | `allow`    | names permitted; anything matched and not allowed is the violation |
 | `message`  | why. `{name}` is substituted with the offending name               |
+| `probe`    | `{ source, name }` — a snippet the rule must report `name` out of  |
 
 `match`/`matchNot` narrow _what the rule is about_; `allow` says which of those are fine.
 Either side can carry the exemption — the `find*` example above uses `matchNot`, and a hook
@@ -78,6 +79,47 @@ exist in the glob language: it means _a hook_, without also matching `user` or `
 right trade for a rule about a naming convention, since the convention is what it is
 policing.
 :::
+
+## Which declarations are read
+
+`type-members` reads the members **written in** a named type declaration, under that
+declaration's name — a `type` alias or an `interface`, and inside an alias, through
+intersections, unions and parentheses:
+
+```ts
+type Base = { save(): void };
+type Port = Base & { findOneById(): void }; // Port.findOneById — and Base.save, under Base
+interface Other extends Base {
+  findMany(): void;
+} // Other.findMany
+```
+
+A reference is not followed. `Base`'s members are declared where `Base` is and are reported
+there under its own name; following the reference would report every member twice, under
+two names. So an `in` pattern must name the declaration where the member is actually
+written.
+
+Not read: class bodies (a class is not a type declaration — a runtime object with
+visibility is a different vocabulary question), index, call and construct signatures, mapped
+types, and computed keys.
+
+## Proving the rule reads your shape
+
+A rule about a shape the extractor does not read would pass its generated probe while
+reporting nothing.
+
+An authored `probe` closes that: the snippet is parsed at load, and the rule must report
+`name` out of what the parser read, or the policy refuses to load.
+
+```js
+probe: {
+  source: "export type TodosRepositoryShape = { findOneByEmail(): void };",
+  name: "findOneByEmail",
+},
+```
+
+Write it in the shape your real ports take. See
+[Probes](/oxlint-utils/architecture-rules/enforcement/probes/#writing-the-probe-yourself).
 
 ## Several rules on one node
 

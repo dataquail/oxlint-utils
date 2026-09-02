@@ -1,0 +1,84 @@
+---
+title: Adoption
+description: Ratchets on the policy itself — a ceiling on the tiers not yet tightened, and a floor on how much of the tree the rules reach.
+---
+
+A [probe](/oxlint-utils/architecture-rules/enforcement/probes/) proves a rule **can** fire. The
+[baseline](/oxlint-utils/architecture-rules/enforcement/baseline/) is a ratchet on the violations
+the code is carrying. This page is the third question, which neither of those asks: **how
+much of the tree does the policy actually reach?**
+
+A policy adopted incrementally has two honest ways to say "not this part yet":
+
+- [`partial`](/oxlint-utils/architecture-rules/manifest/inheritance/) on a folder — carry policy
+  for the subtree without claiming to enumerate its contents.
+- `unrestricted: true` on an `imports` block — this tier has no allowlist; only its
+  prohibitions apply.
+
+Both are sentences someone wrote, and `grep unrestricted` is the adoption backlog. But a
+backlog with no ceiling is a backlog that grows, and a file no allowlist selects, in a folder
+no layout enumerates, is a file the policy has nothing to say about — indistinguishable, on a
+green check, from one that is fully enforced.
+
+## `limits`
+
+```js
+limits: {
+  unrestricted: 3,   // at most three tiers may say `unrestricted: true`
+  partial: 1,        // at most one folder may be `partial`
+  coverage: {        // floors, as fractions of the files walked
+    imports: 0.9,
+    structure: 0.8,
+    members: 0.2,
+    surface: 0.5,
+    graph: 1,
+  },
+},
+```
+
+**The ceilings are checked at load, by both adapters.** A policy with more `unrestricted` or
+`partial` nodes than its ceiling allows is refused, naming them — the same way a rule that
+fails its probe is refused. Raising the number is a deliberate edit to the manifest, which is
+the property a ratchet wants: the backlog only shrinks unless someone says otherwise, in the
+open.
+
+**The floors are checked by `architecture check`**, which is the adapter that walks the files.
+Each is a minimum fraction of walked source files a family reaches:
+
+| Family      | A file counts when                                                                                                                    |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `imports`   | an import **allowlist** selects it. An `unrestricted` tier emits none, so this is the honest count of files whose imports are bounded |
+| `structure` | its folder's files are **enumerated** by name. An `open` folder is claimed, not policed, and does not count                           |
+| `members`   | a `members` rule selects it                                                                                                           |
+| `surface`   | a `surface` rule selects it                                                                                                           |
+| `graph`     | it is in the scope of a `cycles` or `orphans` rule                                                                                    |
+
+A family under its floor fails `check`, naming the fraction and the floor. Like the ceilings,
+the floors are written in the manifest and only rise by hand; there is no state file to fall
+out of date.
+
+## `coverage`
+
+```
+$ architecture coverage packages
+
+61 files under packages
+
+  imports       61/61  100%  under an import allowlist  ≥ 100% ✓
+  structure     61/61  100%  in an enumerated folder (0 in an open one, 0 in none)
+  members       21/61   34%  selected by a members rule
+  surface       58/61   95%  selected by a surface rule
+  graph         48/61   78%  in a cycles or orphans scope
+
+  unrestricted tiers: (none)
+  partial tiers:      (none)
+```
+
+Run it when adopting a policy to see where the tree is thin, and again when a floor fails to
+see which family fell. The numbers are the ones `check` compares against the floors.
+
+:::note
+Coverage is about **reach**, not correctness. A family at 100% says every file has a rule
+that speaks to it; whether the rule says the right thing is what
+[planting the violation](/oxlint-utils/architecture-rules/enforcement/probes/#two-more-habits) is for.
+:::

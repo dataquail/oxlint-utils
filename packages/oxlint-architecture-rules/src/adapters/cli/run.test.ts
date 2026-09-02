@@ -7,7 +7,16 @@ import * as Exit from "effect/Exit";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { loadPolicy } from "../oxlint/config-loader.js";
-import { check, type CliFailure, collectFindings, explain, run, writeBaseline } from "./run.js";
+import {
+  check,
+  type CliFailure,
+  collectFindings,
+  coverage,
+  explain,
+  facts,
+  run,
+  writeBaseline,
+} from "./run.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../../.tmp-cli-tests");
@@ -17,6 +26,9 @@ const repoRoot = path.resolve(here, "../../../.tmp-cli-tests");
 // about this repository's own code.
 const MANIFEST = `export default {
   resolve: { scopes: [{ files: "", tsconfig: "tsconfig.json" }], unresolved: "off" },
+  graph: {
+    cycles: [{ name: "no-cycles", message: "These files import each other.", within: "lib/**" }],
+  },
   exports: [
     {
       name: "no-factories",
@@ -46,6 +58,7 @@ const MANIFEST = `export default {
           ],
         },
         "*.view.tsx": {
+          surface: [{ message: "A view exports nothing named.", kinds: ["named"] }],
           members: [
             {
               message: "\`{name}\` puts state in the View.",
@@ -78,6 +91,9 @@ beforeAll(() => {
     'import { makeBus } from "../lib/bus.ts";\nexport type ThingRepositoryShape = { findOneById: () => void };\nexport const x = makeBus;\n',
   );
   write("src/thing.view.tsx", "export const V = () => useState(0);\n");
+  // graph: two files in lib/ that import each other.
+  write("lib/a.ts", 'import "./b.ts";\nexport const a = 1;\n');
+  write("lib/b.ts", 'import "./a.ts";\nexport const b = 1;\n');
   write("lib/bus.ts", "export const makeBus = 1;\n");
 });
 
@@ -92,9 +108,11 @@ describe("collectFindings", () => {
 
     expect([...new Set(findings.violations.map((one) => one.kind))].sort()).toEqual([
       "export",
+      "graph",
       "import",
       "member",
       "structure",
+      "surface",
     ]);
   });
 
@@ -109,13 +127,15 @@ describe("collectFindings", () => {
         "src/*.repository.ts/members-0",
         "src/*.view.tsx/members-0",
         "src/*.repository.ts/requires",
+        "src/*.view.tsx/surface-0",
+        "no-cycles",
       ]),
     );
   });
 
   it("counts the files it walked", async () => {
     const policy = await loadPolicy(repoRoot);
-    expect(collectFindings(policy, ["src", "lib"]).files).toBe(3);
+    expect(collectFindings(policy, ["src", "lib"]).files).toBe(5);
   });
 });
 
@@ -143,7 +163,7 @@ describe.sequential("check", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     expect(output).toContain("src/thing.repository.ts");
-    expect(output).toContain("3 files, ");
+    expect(output).toContain("5 files, ");
   });
 
   it("refuses to write a baseline when the policy declares nowhere to put one", async () => {
@@ -166,10 +186,91 @@ describe.sequential("explain", () => {
     expect(output).toContain("src/thing.repository-live.ts");
   });
 
+  it("names the rules of every other family that speak to the file", async () => {
+    const view = (await captureReport(explain(await loadPolicy(repoRoot), "src/thing.view.tsx")))
+      .output;
+    expect(view).toContain("may not name (exports):");
+    expect(view).toContain("no-factories");
+    expect(view).toContain("vocabulary (members):");
+    expect(view).toContain("src/*.view.tsx/members-0");
+    expect(view).toContain("may export (surface):");
+    expect(view).toContain("src/*.view.tsx/surface-0");
+    expect(view).not.toContain("graph:");
+
+    const bus = (await captureReport(explain(await loadPolicy(repoRoot), "lib/bus.ts"))).output;
+    expect(bus).toContain("graph:");
+    expect(bus).toContain("no-cycles");
+    expect(bus).toContain("(cycles)");
+  });
+
   it("says so when no tier above the file states an allowlist", async () => {
     const { output } = await captureReport(explain(await loadPolicy(repoRoot), "lib/bus.ts"));
 
     expect(output).toContain("no tier above this file states an allowlist");
+  });
+});
+
+describe.sequential("coverage", () => {
+  it("reports each family's reach and the adoption backlog", async () => {
+    const { output } = await captureReport(coverage(await loadPolicy(repoRoot), ["src", "lib"]));
+
+    expect(output).toContain("5 files under src, lib");
+    // src/ has an allowlist; lib/ does not.
+    expect(output).toMatch(/imports\s+2\/5\s+40%/);
+    expect(output).toContain("unrestricted tiers: (none)");
+  });
+
+  it("fails check when a family is under the floor the policy states", async () => {
+    const policy = await loadPolicy(repoRoot);
+    const floored = {
+      ...policy,
+      config: { ...policy.config, limits: { coverage: { imports: 0.5 } } },
+    };
+    const { exit, output } = await captureReport(check(floored, ["src", "lib"]));
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(output).toContain("coverage is below the floor");
+    expect(output).toContain("imports: 40% covered, floor 50%");
+  });
+});
+
+describe.sequential("facts", () => {
+  it("prints every edge with its bindings, and every declared and called name", async () => {
+    const { output } = await captureReport(
+      facts(await loadPolicy(repoRoot), "src/thing.repository.ts"),
+    );
+
+    expect(output).toContain("edges:");
+    expect(output).toContain("../lib/bus.ts");
+    expect(output).toContain("named     makeBus");
+    expect(output).toContain("type-members:");
+    expect(output).toContain("ThingRepositoryShape.findOneById");
+    expect(output).toContain("calls: (none)");
+    expect(output).toContain("exports:");
+    expect(output).toContain("named     x  (variable)");
+  });
+
+  it("emits the same facts as JSON", async () => {
+    const { output } = await captureReport(
+      facts(await loadPolicy(repoRoot), "src/thing.view.tsx", "json"),
+    );
+
+    const parsed = JSON.parse(output) as {
+      file: string;
+      edges: Array<unknown>;
+      memberSites: Array<{ subject: string; name: string }>;
+    };
+    expect(parsed.file).toBe("src/thing.view.tsx");
+    expect(parsed.edges).toEqual([]);
+    expect(parsed.memberSites).toEqual([
+      { file: "src/thing.view.tsx", subject: "calls", name: "useState" },
+    ]);
+  });
+
+  it("fails on a file it cannot read", async () => {
+    const { exit } = await captureReport(facts(await loadPolicy(repoRoot), "src/missing.ts"));
+
+    expect(Exit.isFailure(exit)).toBe(true);
   });
 });
 
@@ -192,6 +293,24 @@ describe.sequential("run", () => {
 
   it("refuses explain without a file", async () => {
     const { exit } = await captureReport(run(repoRoot, ["explain"]));
+
+    expect(Exit.isFailure(exit)).toBe(true);
+  });
+
+  it("routes coverage", async () => {
+    const { exit } = await captureReport(run(repoRoot, ["coverage", "src", "lib"]));
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+  });
+
+  it("routes facts, with --json anywhere in the arguments", async () => {
+    const { exit } = await captureReport(run(repoRoot, ["facts", "--json", "src/thing.view.tsx"]));
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+  });
+
+  it("refuses facts without a file", async () => {
+    const { exit } = await captureReport(run(repoRoot, ["facts", "--json"]));
 
     expect(Exit.isFailure(exit)).toBe(true);
   });

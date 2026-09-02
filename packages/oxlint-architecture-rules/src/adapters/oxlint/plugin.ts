@@ -4,6 +4,7 @@ import { makeImportsRule } from "./imports-rule.js";
 import { makeMembersRule } from "./members-rule.js";
 import type { OxlintRule } from "./oxlint-api.js";
 import { makeStructureRule } from "./structure-rule.js";
+import { makeSurfaceRule } from "./surface-rule.js";
 
 // oxlint imports this module once per lint run and reads `rules` synchronously,
 // so the policy is loaded here rather than inside a rule. A load failure throws
@@ -20,11 +21,13 @@ export const rules: {
   readonly exports: OxlintRule;
   readonly members: OxlintRule;
   readonly structure: OxlintRule;
+  readonly surface: OxlintRule;
 } = {
   imports: makeImportsRule(policy),
   exports: makeExportsRule(policy),
   members: makeMembersRule(policy),
   structure: makeStructureRule(policy),
+  surface: makeSurfaceRule(policy),
 };
 
 const plugin: { readonly meta: { readonly name: string }; readonly rules: typeof rules } = {

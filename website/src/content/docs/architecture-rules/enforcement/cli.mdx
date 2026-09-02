@@ -1,6 +1,6 @@
 ---
 title: The CLI
-description: check, baseline and explain — the same policy with no linter in the loop.
+description: check, baseline, coverage, explain and facts — the same policy with no linter in the loop.
 ---
 
 The package ships a second way to ask the same question.
@@ -8,7 +8,9 @@ The package ships a second way to ask the same question.
 ```bash
 architecture check [roots…]      # evaluate the policy
 architecture baseline [roots…]   # record what the repository currently violates
+architecture coverage [roots…]   # how much of the tree the policy reaches
 architecture explain <file>      # what governs this file, and why
+architecture facts <file>        # what the parser read out of this file
 ```
 
 `roots` are directories to walk, defaulting to `packages`. The walker skips `.d.ts` files
@@ -20,7 +22,7 @@ oxlint's JS plugin API is alpha. A policy that only one alpha host can evaluate 
 point of failure, and the policy is the valuable artefact — it should outlive any particular
 way of running it.
 
-The CLI covers **all four families**. Where the plugin reads oxlint's syntax tree, the CLI
+The CLI covers **all five per-file families, and the graph.** Where the plugin reads oxlint's syntax tree, the CLI
 reads TypeScript's, and the two meet at the same vocabulary — a specifier, a binding, a
 member site — so both answer to the same core rather than to each other. That shared core is
 what makes the second adapter a check on the first rather than a second implementation to
@@ -28,6 +30,32 @@ keep in sync.
 
 It is also the only way to write a baseline, which needs every finding at once rather than
 one file at a time.
+
+## Graph rules
+
+The [`graph`](/oxlint-utils/architecture-rules/manifest/graph/) family — cycles, orphans, what a
+tier may reach through any number of hops — is **evaluated by the CLI only**. The plugin sees
+one file at a time and has no view of the others; "does anything import this?" is not a
+question it can ask. Both adapters still compile and probe graph rules at load, so a vacuous
+one fails the lint run too, but only `check` has the graph to evaluate them against.
+
+That makes the CLI a **superset** of the plugin rather than a mirror of it, and it is the one
+deliberate asymmetry between them. Run both: oxlint for the per-file families at editor
+speed, `check` in CI for those plus the graph. The graph is built only when a rule needs it,
+and every file is parsed once whether the per-file families or the graph pass asks first.
+
+## Graph rules
+
+The [`graph`](/oxlint-utils/architecture-rules/manifest/graph/) family — cycles, orphans, what a
+tier may reach through any number of hops — is **evaluated by the CLI only**. The plugin sees
+one file at a time and has no view of the others; "does anything import this?" is not a
+question it can ask. Both adapters still compile and probe graph rules at load, so a vacuous
+one fails the lint run too, but only `check` has the graph to evaluate them against.
+
+That makes the CLI a **superset** of the plugin rather than a mirror of it, and it is the one
+deliberate asymmetry between them. Run both: oxlint for the per-file families at editor
+speed, `check` in CI for those plus the graph. The graph is built only when a rule needs it,
+and every file is parsed once whether the per-file families or the graph pass asks first.
 
 :::note
 Parsing rather than pattern-matching is not incidental. A side-effect import — `import
@@ -48,6 +76,12 @@ a survey harness that missed eleven of them is why the CLI uses a real parser.
 Exits non-zero on any reportable violation, any unresolved import, or any stale baseline
 entry. Each finding names the rule that produced it, and the rule name is the node path in
 the manifest — so the sentence that caused it is found by reading down the same path.
+
+## `coverage`
+
+How much of the tree the policy reaches, per family, with the tiers that said "not tightened
+yet" beneath. `check` compares the same numbers against any floors the manifest states in
+`limits.coverage`. See [Adoption](/oxlint-utils/architecture-rules/enforcement/adoption/).
 
 ## `explain`
 
@@ -80,8 +114,10 @@ packages/server/src/modules/todos/commands/create-todo.handler.ts
 ```
 
 It prints the allowlist actually in force after inheritance, every prohibition that reaches
-the file with the first sentence of its reason, the folder rule that admits it, and the
-siblings it owes.
+the file with the first sentence of its reason, the folder rule that admits it, the siblings
+it owes — and then, one section per family that has something to say about the file, the
+`exports` restrictions, `members` vocabularies, `surface` rules and `graph` scopes that
+select it. `facts` is the other half: what those rules are evaluated against.
 
 The allowlist is shown as compiled regular expressions rather than as the globs you wrote,
 because what is in force after inheritance is not any single line of the manifest. `$1` is a
@@ -90,6 +126,81 @@ the rule says _this module's own domain_, not any module's.
 
 When a rule seems to be firing too much or not at all, this is the first thing to run.
 
+## `facts`
+
+`explain` says which rules select a file. `facts` says what those rules are evaluated
+against: every edge the parser found, the names carried across each, every declared member,
+every called name, and every export site.
+
+```
+$ architecture facts packages/server/src/modules/todos/commands/create-todo.handler.ts
+
+packages/server/src/modules/todos/commands/create-todo.handler.ts
+
+  edges:
+    effect
+        namespace *
+    ../domain/todo/todo.root.ts
+        named     Todo
+        named     TodoId
+    server-only
+        (no bindings)
+
+  type-members:
+    CreateTodoDeps.todos
+    CreateTodoDeps.clock
+
+  calls:
+    makeCommandHandler
+    Effect.gen
+
+  exports:
+    named     createTodo  (variable)
+    named     CreateTodoDeps  (type)
+```
+
+A rule that "should fire" and does not is one of two mistakes, and this is how to tell them
+apart. If the site is listed here, the rule's pattern does not select it — go back to
+`explain`. If it is not listed, the adapter does not extract that fact from that syntax —
+a `type-members` rule reads the members written in an alias or an interface, and not a
+class body or a referenced type.
+
+`--json` prints the same facts as one JSON object, for scripting.
+
+## Which forms count
+
+Both adapters read the same forms out of their respective syntax trees, and a test suite in
+the package holds them to it — every form below is parsed by both and must yield the same
+facts.
+
+An **import edge** is any of:
+
+```ts
+import "m"; // side-effect
+import x, { a, b as c } from "m"; // default, named, renamed
+import * as ns from "m"; // namespace
+import type { T } from "m"; // type-only — still an edge
+export { a, b as c } from "m"; // re-export
+export * from "m"; // re-export everything
+export * as ns from "m";
+import x = require("m");
+await import("m"); // a literal argument only
+require("m"); // a literal argument only
+```
+
+A computed specifier — a template literal, a variable, anything but a string literal — is not an
+edge in either adapter: it is not a fact a static policy can speak about.
+
+Each edge carries **bindings**: a `named` one per name, a `default` one for a default import,
+and one `namespace` binding, named `*`, for every form that takes the whole module — `import
+
+- as`, `export _`, `export _ as`, `import =`, `import()`, `require()`. A side-effect import
+  carries none.
+
+A **call** is named by its identifier or property — `f()` and `x.f()` are both `f`. A
+computed property, `x[f]()` or `x["f"]()`, and a private one, `x.#f()`, have no name a
+vocabulary rule can speak about and are not reported.
+
 ## Wiring it up
 
 ```json
@@ -97,11 +208,12 @@ When a rule seems to be firing too much or not at all, this is the first thing t
   "scripts": {
     "lint:architecture": "architecture check packages",
     "architecture:baseline": "architecture baseline packages",
-    "architecture:explain": "architecture explain"
+    "architecture:explain": "architecture explain",
+    "architecture:facts": "architecture facts"
   }
 }
 ```
 
-Run `check` in CI alongside `oxlint`. They evaluate the same manifest and should agree; if
-they ever disagree, one of the two adapters has a bug, and finding that out is worth the
-duplicated run.
+Run `check` in CI alongside `oxlint`. On the per-file families they evaluate the same manifest
+and should agree; if they ever disagree, one of the two adapters has a bug, and finding that
+out is worth the duplicated run. On the graph, only `check` has an answer. On the graph, only `check` has an answer.

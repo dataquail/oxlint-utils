@@ -27,6 +27,21 @@
 // run here first.
 
 /** @type {import("oxlint-architecture-rules").Manifest} */
+// "Given facts, they return violations; they never read a file." Stated as a
+// rule about calls rather than about imports: an import allowlist stops
+// `node:fs` at the door, but a `readFileSync` handed in as a callback, or
+// reached through a helper, is the same violation with no edge to catch.
+const NO_FILE_SYSTEM_CALLS = {
+  message:
+    "`{name}` reads or writes the file system. This tier is given facts and returns violations; the file system is behind a port, and the port is what it takes.",
+  subject: "calls",
+  match: ["*Sync", "readFile", "readdir", "writeFile", "require"],
+  probe: {
+    source: 'import { readFileSync } from "node:fs"; readFileSync("x");',
+    name: "readFileSync",
+  },
+};
+
 export default {
   // Where a repository adopting this policy records the violations it is
   // carrying. This one has none, so the file is absent — and `architecture
@@ -49,6 +64,76 @@ export default {
     "@arch": "packages/oxlint-architecture-rules/src",
   },
 
+  // Which exported names may cross which edges — the family a path rule cannot
+  // express, because every importer of a module resolves to the same file.
+  exports: [
+    {
+      name: "live-adapters-at-the-composition-root",
+      message:
+        "A live adapter is constructed once, where the package is composed. Everything else takes the port it satisfies, or the fake — which is what lets it be tested without a file system or a resolver.",
+      module: "@arch/infrastructure/*-live.ts",
+      symbols: ["makeFileSystemLive", "makeModuleResolverLive", "makeFactExtractorLive"],
+      except: ["@arch/adapters/oxlint/config-loader.ts", "@arch/index.ts", "**/*.test.ts"],
+      probe: {
+        source: 'import { makeFileSystemLive } from "../infrastructure/file-system-live.js";',
+        symbol: "makeFileSystemLive",
+      },
+    },
+    {
+      name: "name-what-you-take",
+      message:
+        "Name what you take from a sibling module. A namespace import or an `export *` takes every export at once, hides which are used, and launders a restricted name past every rule about it.",
+      module: "@arch/**",
+      kinds: ["namespace"],
+      probe: { source: 'import * as imports from "../core/imports.js";', symbol: "*" },
+    },
+  ],
+
+  // Ratchets on the policy itself. No tier here says "not tightened yet", and
+  // the ceilings say none may start to without this line changing. The floors
+  // are the reach `architecture coverage` reported when they were written.
+  limits: {
+    unrestricted: 0,
+    partial: 0,
+    // Every folder here is `layout: "open"`, so structure is 0% enumerated and
+    // states no floor. The rest are the numbers on the day they were written.
+    coverage: { imports: 1, members: 0.39, surface: 0.98, graph: 0.61 },
+  },
+
+  // The shape of the whole graph — evaluated by `architecture check`, which
+  // is the one adapter that sees every file at once.
+  graph: {
+    cycles: [
+      {
+        name: "no-cycles",
+        message:
+          "These files import each other, directly or through others. A cycle is a module boundary that does not exist.",
+        within: "@arch/**",
+        withinNot: "**/*.test.ts",
+      },
+    ],
+    orphans: [
+      {
+        name: "no-dead-modules",
+        message:
+          "Nothing imports this file. A module nothing reaches is either dead, or an entry point this policy has not listed.",
+        within: "@arch/**",
+        withinNot: "**/*.test.ts",
+        entry: ["@arch/index.ts", "@arch/adapters/oxlint/plugin.ts", "@arch/adapters/cli/main.ts"],
+      },
+    ],
+    reach: [
+      {
+        name: "pure-tiers-reach-no-adapter",
+        message:
+          "The pure tiers — domain, ports, core, manifest — reach no live implementation and no delivery adapter, through any number of hops. That is what makes them testable without one.",
+        from: ["@arch/domain/**", "@arch/ports/**", "@arch/core/**", "@arch/manifest/**"],
+        fromNot: "**/*.test.ts",
+        to: ["@arch/infrastructure/*-live.ts", "@arch/adapters/**"],
+      },
+    ],
+  },
+
   tree: {
     "~/oxlint-architecture-rules/": {
       message:
@@ -66,12 +151,29 @@ export default {
       children: {
         "src/": {
           layout: "open",
+          // The plugin entry is the one default export: oxlint reads a plugin
+          // as a module's default. Everything else has a name to grep for.
+          surface: [
+            {
+              message:
+                "No default exports. A default has no name to grep for, and every importer may call it something different.",
+              kinds: ["default"],
+              except: ["@arch/adapters/oxlint/plugin.ts"],
+              probe: { source: "export default function main() {}" },
+            },
+            {
+              message:
+                "Re-export by name, so a barrel says what the module is. `export *` takes every export at once and launders a restricted name through the barrel.",
+              kinds: ["namespace"],
+            },
+          ],
           children: {
             "domain/": {
               message:
                 "domain/ is the model: the manifest schema, the error types, and the Violation with its line-independent fingerprint. No I/O, and nothing above it.",
               layout: "open",
               children: {},
+              members: [NO_FILE_SYSTEM_CALLS],
               imports: {
                 message:
                   "domain/ is the bottom of the graph. It reaches itself and the runtime, and nothing else in the package.",
@@ -81,9 +183,22 @@ export default {
 
             "ports/": {
               message:
-                "ports/ declares the two things this package must touch — a file system and a module resolver — as interfaces, so the core can be tested without either.",
+                "ports/ declares the things this package must touch — a file system, a module resolver, a parser — as interfaces, so the core can be tested without any of them.",
               layout: "open",
               children: {},
+              members: [
+                {
+                  message:
+                    'A port member is a verb in camelCase: "{name}" is not. The port is the vocabulary every adapter must speak, and its case is part of the contract.',
+                  subject: "type-members",
+                  allow: "[a-z]*",
+                  probe: {
+                    source:
+                      "export type FileSystem = { readonly Exists: (path: string) => boolean };",
+                    name: "Exists",
+                  },
+                },
+              ],
               imports: {
                 message:
                   "A port is a declaration. It may name the domain types that appear in its signatures, and nothing else.",
@@ -96,6 +211,7 @@ export default {
                 "core/ holds the pure evaluators — imports, exports, members, structure, baseline, patterns. Given facts, they return violations; they never read a file.",
               layout: "open",
               children: {},
+              members: [NO_FILE_SYSTEM_CALLS],
               imports: {
                 message:
                   "core/ evaluates. It reaches the domain, the ports it is given, and its own siblings — never a live adapter, which is what lets every rule here be tested against a fake.",
@@ -131,7 +247,7 @@ export default {
               imports: {
                 message:
                   "An adapter implements a port. It reaches the port it satisfies, the domain types in that signature, and its own siblings.",
-                external: ["unrs-resolver"],
+                external: ["unrs-resolver", "typescript"],
                 allow: ["@arch/domain/**", "@arch/ports/**", "@arch/infrastructure/**"],
               },
             },

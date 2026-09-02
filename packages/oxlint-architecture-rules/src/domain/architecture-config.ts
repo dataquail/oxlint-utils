@@ -57,11 +57,16 @@ export const ResolveConfig = Schema.Struct({
 // cares that `named` was used at all.
 const BindingKind = Schema.Literals(["named", "default", "namespace"]);
 
+// `source`, when present, is a snippet the loading adapter parses: the probe
+// then holds only if a binding named `symbol` comes out of the parser and the
+// rule covers it, with every edge in the snippet taken to resolve to `to`.
+// Without it the probe is a synthetic binding of `symbol` and `kind`.
 const ExportProbe = Schema.Struct({
   from: Schema.String,
   to: Schema.String,
   symbol: Schema.String,
   kind: Schema.optionalKey(BindingKind),
+  source: Schema.optionalKey(Schema.String),
 });
 
 // Where a given *exported symbol* may be imported. `imports` asks whether one
@@ -90,15 +95,21 @@ export const ExportRule = Schema.Struct({
   fix: Schema.optionalKey(Schema.Literals(["subpath-namespace-import"])),
 });
 
-// What kind of declared name a rule is about. `type-members` are the members of
-// a type alias (a port's method vocabulary); `calls` are called identifiers (the
-// hooks a tier may reach for).
+// What kind of declared name a rule is about. `type-members` are the members
+// written in a named type declaration — an alias or an interface, through
+// intersections and unions — (a port's method vocabulary); `calls` are called
+// identifiers (the hooks a tier may reach for).
 const MemberSubject = Schema.Literals(["type-members", "calls"]);
 
+// `source`, when present, is a snippet the loading adapter parses: the probe
+// then holds only if a site named `name` comes out of the parser and the rule
+// reports it — the declaration shape is the parser's to judge, not `in`'s.
+// Without it the probe is a synthetic site of `name` inside `in`.
 const MemberProbe = Schema.Struct({
   from: Schema.String,
   name: Schema.String,
   in: Schema.optionalKey(Schema.String),
+  source: Schema.optionalKey(Schema.String),
 });
 
 // Which names a file is allowed to declare or call. This is the one family that
@@ -119,6 +130,113 @@ export const MemberRule = Schema.Struct({
   // Names that are fine. A name the rule speaks to and this does not admit is
   // the violation.
   allow: Schema.optionalKey(PatternList),
+});
+
+// What an exported name was declared as, when it was declared in the file.
+// `expression` is `export default <expr>`; `other` covers a namespace, an
+// `export =`, and a re-export, whose declaration is somewhere else.
+export const DeclarationKind = Schema.Literals([
+  "function",
+  "class",
+  "variable",
+  "type",
+  "interface",
+  "enum",
+  "expression",
+  "other",
+]);
+
+// One export site, as a probe states it: the name (`default` for a default
+// export, `*` for `export *`), its binding kind, and optionally what it was
+// declared as and whether it is a re-export.
+const SurfaceSite = Schema.Struct({
+  name: Schema.String,
+  kind: BindingKind,
+  declares: Schema.optionalKey(DeclarationKind),
+  reexport: Schema.optionalKey(Schema.Boolean),
+});
+
+// A whole surface, because `count` is about the file rather than a site.
+// `source`, when present, is parsed by the loading adapter instead.
+const SurfaceProbe = Schema.Struct({
+  from: Schema.String,
+  sites: Schema.optionalKey(Schema.Array(SurfaceSite)),
+  source: Schema.optionalKey(Schema.String),
+});
+
+// What a file may export. The selectors (`kinds`, `declares`, `reexport`,
+// `match`) say which sites the rule speaks to; exactly one demand says what is
+// required of them. No demand means `forbid`: a selected site is the violation.
+export const SurfaceRule = Schema.Struct({
+  name: Schema.String,
+  message: Schema.String,
+  probe: SurfaceProbe,
+  from: PatternList,
+  fromNot: Schema.optionalKey(PatternList),
+  kinds: Schema.optionalKey(Schema.Array(BindingKind)),
+  declares: Schema.optionalKey(Schema.Array(DeclarationKind)),
+  reexport: Schema.optionalKey(Schema.Boolean),
+  match: Schema.optionalKey(PatternList),
+  matchNot: Schema.optionalKey(PatternList),
+  forbid: Schema.optionalKey(Schema.Boolean),
+  // Names that are fine; a selected site named otherwise is the violation.
+  allow: Schema.optionalKey(PatternList),
+  // A regular-expression source every selected name must match.
+  convention: Schema.optionalKey(Schema.String),
+  // How many selected sites the file may have.
+  count: Schema.optionalKey(
+    Schema.Struct({
+      min: Schema.optionalKey(Schema.Finite),
+      max: Schema.optionalKey(Schema.Finite),
+    }),
+  ),
+});
+
+// A small synthetic graph the rule must report on: the edges, and any files
+// that take part without an edge (an orphan has none).
+const GraphProbe = Schema.Struct({
+  edges: Schema.Array(Schema.Tuple([Schema.String, Schema.String])),
+  files: Schema.optionalKey(Schema.Array(Schema.String)),
+});
+
+// Rules about the shape of the whole import graph, which no single file can
+// answer. The CLI evaluates them; the plugin, which sees one file at a time,
+// compiles and probes them so a vacuous one still fails to load.
+export const GraphCycleRule = Schema.Struct({
+  name: Schema.String,
+  message: Schema.String,
+  probe: GraphProbe,
+  within: PatternList,
+  withinNot: Schema.optionalKey(PatternList),
+});
+
+export const GraphOrphanRule = Schema.Struct({
+  name: Schema.String,
+  message: Schema.String,
+  probe: GraphProbe,
+  within: PatternList,
+  withinNot: Schema.optionalKey(PatternList),
+  // Files that are imported by nothing by design — the program's entry points.
+  entry: PatternList,
+});
+
+export const GraphReachRule = Schema.Struct({
+  name: Schema.String,
+  message: Schema.String,
+  probe: GraphProbe,
+  from: PatternList,
+  fromNot: Schema.optionalKey(PatternList),
+  to: PatternList,
+  toNot: Schema.optionalKey(PatternList),
+  // The tier that was supposed to mediate: a path stepping onto a `via` file is
+  // allowed, so only a path that avoids every `via` is the violation.
+  via: Schema.optionalKey(PatternList),
+});
+
+export const GraphConfig = Schema.Struct({
+  cycles: Schema.optionalKey(Schema.Array(GraphCycleRule)),
+  orphans: Schema.optionalKey(Schema.Array(GraphOrphanRule)),
+  reach: Schema.optionalKey(Schema.Array(GraphReachRule)),
 });
 
 const PathProbe = Schema.Struct({ path: Schema.String });
@@ -196,11 +314,23 @@ export type BindingKind = (typeof BindingKind)["Type"];
 export type MemberRule = (typeof MemberRule)["Type"];
 export type MemberProbe = (typeof MemberProbe)["Type"];
 export type MemberSubject = (typeof MemberSubject)["Type"];
+export type GraphProbe = (typeof GraphProbe)["Type"];
+export type GraphCycleRule = (typeof GraphCycleRule)["Type"];
+export type GraphOrphanRule = (typeof GraphOrphanRule)["Type"];
+export type GraphReachRule = (typeof GraphReachRule)["Type"];
+export type GraphConfig = (typeof GraphConfig)["Type"];
+export type DeclarationKind = (typeof DeclarationKind)["Type"];
+export type SurfaceRule = (typeof SurfaceRule)["Type"];
+export type SurfaceProbe = (typeof SurfaceProbe)["Type"];
 export type StructureConfig = (typeof StructureConfig)["Type"];
 export type StructureRoot = (typeof StructureRoot)["Type"];
 export type StructureFolder = (typeof StructureFolder)["Type"];
 export type StructureParity = (typeof StructureParity)["Type"];
 export type StructureNaming = (typeof StructureNaming)["Type"];
+
+// The file pattern an open folder's layout rule carries: it admits any name,
+// so it claims the folder without policing it. Coverage counts it apart.
+export const OPEN_LAYOUT = "^.*$";
 
 export const patternsOf = (patterns: string | ReadonlyArray<string>): ReadonlyArray<string> =>
   typeof patterns === "string" ? [patterns] : patterns;

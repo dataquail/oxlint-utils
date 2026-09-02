@@ -6,6 +6,7 @@ import { RuleTester } from "oxlint/plugins-dev";
 import { describe, it } from "vitest";
 
 import { EMPTY_BASELINE, makeBaselineFilter } from "../../core/baseline.js";
+import { EMPTY_GRAPH_RULES } from "../../core/graph.js";
 import { compileStructure } from "../../core/structure.js";
 import { makeFileSystemFake } from "../../infrastructure/file-system-fake.js";
 import { makeModuleResolverFake } from "../../infrastructure/module-resolver-fake.js";
@@ -61,6 +62,9 @@ const policy = (present: ReadonlyArray<string>): LoadedPolicy => {
     importRules: [],
     exportRules: [],
     memberRules: [],
+    surfaceRules: [],
+    graph: EMPTY_GRAPH_RULES,
+    adoption: { unrestricted: [], partial: [] },
     structure: structure.success,
     fileSystem: makeFileSystemFake(present),
     resolver: makeModuleResolverFake({}),

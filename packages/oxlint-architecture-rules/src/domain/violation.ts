@@ -1,4 +1,4 @@
-export type ViolationKind = "import" | "export" | "structure" | "member";
+export type ViolationKind = "import" | "export" | "structure" | "member" | "surface" | "graph";
 
 export type Violation = {
   readonly kind: ViolationKind;

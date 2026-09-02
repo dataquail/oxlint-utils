@@ -1,7 +1,7 @@
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 
-import { ResolveConfig } from "../domain/architecture-config.js";
+import { DeclarationKind, ResolveConfig } from "../domain/architecture-config.js";
 import { ConfigInvalid } from "../domain/architecture-error.js";
 
 // A manifest is a tree of nodes keyed by path pattern, where everything the
@@ -71,6 +71,16 @@ const Naming = Schema.Union([
   Schema.Struct({ like: Schema.String, message: Schema.optionalKey(Schema.String) }),
 ]);
 
+// A probe the author writes, in place of the synthetic one lowering would
+// generate. `source` is parsed by the adapter at load, and the rule must report
+// the named site out of what the parser read — which is the only way to state
+// "this rule fires on an intersection-typed port" and have it checked, since a
+// synthetic probe never meets a parser.
+const MemberProbe = Schema.Struct({
+  source: Schema.String,
+  name: Schema.String,
+});
+
 const Members = Schema.Struct({
   message: Schema.String,
   subject: Schema.Literals(["type-members", "calls"]),
@@ -78,6 +88,43 @@ const Members = Schema.Struct({
   match: Schema.optionalKey(Globs),
   matchNot: Schema.optionalKey(Globs),
   allow: Schema.optionalKey(Globs),
+  probe: Schema.optionalKey(MemberProbe),
+});
+
+// What a file may export. The selectors say which export sites the sentence
+// is about; exactly one demand says what is required of them, and none means
+// `forbid` — a selected site is the violation. Stated on a folder it covers
+// the subtree, like `members`.
+const SurfaceConvention = Schema.Union([
+  Schema.Literals(["kebab-case", "camelCase", "PascalCase", "snake_case"]),
+  Schema.Struct({ regex: Schema.String }),
+]);
+
+const Surface = Schema.Struct({
+  message: Schema.String,
+  // `named`, `default`, `namespace` — the last is `export *` and `export * as`.
+  kinds: Schema.optionalKey(Schema.Array(Schema.Literals(["named", "default", "namespace"]))),
+  // What the site was declared as, for a site declared in the file.
+  declares: Schema.optionalKey(Schema.Array(DeclarationKind)),
+  // `true` speaks only to `export … from "m"`; `false` only to what the file
+  // declares itself.
+  reexport: Schema.optionalKey(Schema.Boolean),
+  match: Schema.optionalKey(Globs),
+  matchNot: Schema.optionalKey(Globs),
+  // The demand. `forbid: true` is the default made explicit.
+  forbid: Schema.optionalKey(Schema.Boolean),
+  allow: Schema.optionalKey(Globs),
+  convention: Schema.optionalKey(SurfaceConvention),
+  count: Schema.optionalKey(
+    Schema.Struct({
+      min: Schema.optionalKey(Schema.Finite),
+      max: Schema.optionalKey(Schema.Finite),
+    }),
+  ),
+  // Files under this node the rule does not apply to.
+  except: Schema.optionalKey(Globs),
+  // A source the rule must report something out of, parsed at load.
+  probe: Schema.optionalKey(Schema.Struct({ source: Schema.String })),
 });
 
 // Which importers may name a given exported symbol. A path rule cannot say
@@ -91,8 +138,18 @@ const ExportRestriction = Schema.Struct({
   // Exact exported names. Omit to mean "any named import from that module",
   // which is how a rule bans a binding form rather than a name.
   symbols: Schema.optionalKey(Schema.Array(Schema.String)),
+  // Which binding forms the rule speaks to. Defaults to `["named"]` — so a rule
+  // about a factory function says nothing about `import makeBus from "m"` until
+  // it lists `"default"`, and nothing about `import * as m`, `export * from
+  // "m"`, `import("m")` or `require("m")` until it lists `"namespace"`. A
+  // namespace binding's only name is `*`, so `symbols` cannot select one.
+  kinds: Schema.optionalKey(Schema.Array(Schema.Literals(["named", "default", "namespace"]))),
   except: Schema.optionalKey(Globs),
   fix: Schema.optionalKey(Schema.Literal("subpath-namespace-import")),
+  // As on `members`: a snippet the adapter parses at load, every edge of which
+  // is taken to reach this module, and a binding out of it the rule must cover.
+  // `symbol` is `"default"` for a default import and `"*"` for a namespace one.
+  probe: Schema.optionalKey(Schema.Struct({ source: Schema.String, symbol: Schema.String })),
 });
 
 export type ManifestNode = {
@@ -112,6 +169,7 @@ export type ManifestNode = {
   readonly imports?: typeof Imports.Type;
   readonly importedBy?: typeof ImportedBy.Type;
   readonly members?: ReadonlyArray<typeof Members.Type>;
+  readonly surface?: ReadonlyArray<typeof Surface.Type>;
   // Files this node must have beside it. `{base}` is this file's name minus its
   // final extension; `../` resolves against the node's own folder.
   readonly requires?: ReadonlyArray<string>;
@@ -132,11 +190,65 @@ const ManifestNodeSchema: Schema.Codec<ManifestNode> = Schema.suspend(() =>
     imports: Schema.optionalKey(Imports),
     importedBy: Schema.optionalKey(ImportedBy),
     members: Schema.optionalKey(Schema.Array(Members)),
+    surface: Schema.optionalKey(Schema.Array(Surface)),
     requires: Schema.optionalKey(Schema.Array(Schema.String)),
     requiresNot: Schema.optionalKey(Schema.Array(Schema.String)),
     children: Schema.optionalKey(Schema.Record(Schema.String, ManifestNodeSchema)),
   }),
 );
+
+// Rules about the shape of the whole import graph. Globs, like everything
+// else here, expanded through `aliases`. Evaluated by the CLI only: the plugin
+// sees one file at a time and cannot answer "does anything import this?".
+const GraphCycles = Schema.Struct({
+  name: Schema.String,
+  message: Schema.String,
+  within: Globs,
+  withinNot: Schema.optionalKey(Globs),
+});
+
+const GraphOrphans = Schema.Struct({
+  name: Schema.String,
+  message: Schema.String,
+  within: Globs,
+  withinNot: Schema.optionalKey(Globs),
+  entry: Globs,
+});
+
+const GraphReach = Schema.Struct({
+  name: Schema.String,
+  message: Schema.String,
+  from: Globs,
+  fromNot: Schema.optionalKey(Globs),
+  to: Globs,
+  toNot: Schema.optionalKey(Globs),
+  via: Schema.optionalKey(Globs),
+});
+
+const Graph = Schema.Struct({
+  cycles: Schema.optionalKey(Schema.Array(GraphCycles)),
+  orphans: Schema.optionalKey(Schema.Array(GraphOrphans)),
+  reach: Schema.optionalKey(Schema.Array(GraphReach)),
+});
+
+// Ratchets on the policy itself. `unrestricted` and `partial` are the two
+// ways a tier says "not tightened yet"; a ceiling on how many may say so is
+// what stops the backlog growing. `coverage` is a floor, per family, on the
+// fraction of walked files a rule actually reaches — probes prove a rule can
+// fire; this proves the tree reaches the files.
+const CoverageFloors = Schema.Struct({
+  imports: Schema.optionalKey(Schema.Finite),
+  structure: Schema.optionalKey(Schema.Finite),
+  members: Schema.optionalKey(Schema.Finite),
+  surface: Schema.optionalKey(Schema.Finite),
+  graph: Schema.optionalKey(Schema.Finite),
+});
+
+const Limits = Schema.Struct({
+  unrestricted: Schema.optionalKey(Schema.Finite),
+  partial: Schema.optionalKey(Schema.Finite),
+  coverage: Schema.optionalKey(CoverageFloors),
+});
 
 export const Manifest = Schema.Struct({
   // How an import specifier becomes a file. Every pattern below is matched
@@ -150,6 +262,8 @@ export const Manifest = Schema.Struct({
   // copies and a seventh forgotten.
   deny: Schema.optionalKey(Schema.Array(Denial)),
   exports: Schema.optionalKey(Schema.Array(ExportRestriction)),
+  graph: Schema.optionalKey(Graph),
+  limits: Schema.optionalKey(Limits),
   // Shorthands expanded in every glob, so a pattern reads the way the repo's own
   // imports do rather than repeating `packages/server/src` on every line.
   aliases: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
@@ -160,6 +274,9 @@ export type Manifest = typeof Manifest.Type;
 export type ImportsSpec = typeof Imports.Type;
 export type ImportedBySpec = typeof ImportedBy.Type;
 export type MembersSpec = typeof Members.Type;
+export type SurfaceSpec = typeof Surface.Type;
+export type GraphSpec = typeof Graph.Type;
+export type LimitsSpec = typeof Limits.Type;
 export type NamingSpec = typeof Naming.Type;
 export type ExportRestriction = typeof ExportRestriction.Type;
 

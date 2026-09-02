@@ -447,6 +447,231 @@ describe("export restrictions", () => {
 
     expect(ruleNamed(lowered.exports, "no-factories").probe.to).toContain("node_modules/pkg");
   });
+
+  it("carries an authored probe's source and symbol in place of the synthetic symbol", () => {
+    const lowered = lowerManifest({
+      ...base({}),
+      exports: [
+        {
+          name: "no-factories",
+          message: "A factory is built at a composition root.",
+          module: "**/node_modules/pkg/**",
+          symbols: ["makeBus"],
+          probe: { source: 'import makeBus from "pkg";', symbol: "default" },
+        },
+      ],
+    });
+
+    const probe = ruleNamed(lowered.exports, "no-factories").probe;
+    expect(probe.symbol).toBe("default");
+    expect(probe.source).toBe('import makeBus from "pkg";');
+    expect(probe.to).toContain("node_modules/pkg");
+  });
+});
+
+describe("export restriction kinds", () => {
+  const restriction = (kinds?: ReadonlyArray<"named" | "default" | "namespace">) =>
+    lowerManifest({
+      ...base({}),
+      exports: [
+        {
+          name: "no-effect-barrel",
+          message: "Import effect by subpath.",
+          module: "**/node_modules/effect/**",
+          ...(kinds === undefined ? {} : { kinds }),
+        },
+      ],
+    });
+
+  it("passes kinds through, and aims the synthetic probe at the first of them", () => {
+    const rule = ruleNamed(restriction(["namespace", "named"]).exports, "no-effect-barrel");
+    expect(rule.kinds).toEqual(["namespace", "named"]);
+    expect(rule.probe.kind).toBe("namespace");
+    expect(rule.probe.symbol).toBe("*");
+  });
+
+  it("names a default probe `default`", () => {
+    const rule = ruleNamed(restriction(["default"]).exports, "no-effect-barrel");
+    expect(rule.probe).toMatchObject({ kind: "default", symbol: "default" });
+  });
+
+  it("leaves kinds unset — the core's default of named — when the manifest says nothing", () => {
+    const rule = ruleNamed(restriction().exports, "no-effect-barrel");
+    expect(rule.kinds).toBeUndefined();
+    expect(rule.probe.kind).toBe("named");
+  });
+});
+
+describe("surface rules", () => {
+  const lowered = (spec: Record<string, unknown>) =>
+    lowerManifest(
+      base({
+        "@/handlers/": {
+          layout: "open",
+          children: {},
+          surface: [spec as never],
+        },
+      }),
+    ).surface[0];
+
+  it("covers the subtree, and defaults to forbid with a probe of one selected site", () => {
+    const rule = lowered({ message: "No default exports.", kinds: ["default"] });
+    expect(new RegExp(rule?.from as string).test("pkg/src/handlers/deep/x.ts")).toBe(true);
+    expect(rule?.probe.sites).toEqual([{ name: "default", kind: "default" }]);
+    expect(rule?.allow).toBeUndefined();
+    expect(rule?.count).toBeUndefined();
+  });
+
+  it("lowers a named convention to its regex, with a name the convention rejects as the probe", () => {
+    const rule = lowered({ message: "camelCase.", convention: "camelCase" });
+    expect(rule?.convention).toBe("^[a-z][a-zA-Z0-9]*$");
+    expect(rule?.probe.sites?.[0]?.name).toBe("zz-probe-stray");
+  });
+
+  it("probes a minimum count with an empty surface, and a maximum with one site too many", () => {
+    expect(lowered({ message: "one", count: { min: 1, max: 1 } })?.probe.sites).toEqual([]);
+    expect(lowered({ message: "two", count: { max: 2 } })?.probe.sites).toHaveLength(3);
+  });
+
+  it("refuses a count nothing can violate", () => {
+    expect(() => lowered({ message: "any", count: {} })).toThrow(/nothing can violate/);
+  });
+
+  it("refuses more than one demand on one entry", () => {
+    expect(() => lowered({ message: "x", allow: ["a"], count: { max: 1 } })).toThrow(/one demand/);
+  });
+
+  it("carries an authored probe's source and `except` as fromNot", () => {
+    const rule = lowered({
+      message: "x",
+      kinds: ["default"],
+      except: ["@/handlers/main.ts"],
+      probe: { source: "export default 1;" },
+    });
+    expect(rule?.probe.source).toBe("export default 1;");
+    const [exempt] = rule?.fromNot ?? [];
+    expect(exempt).toBeDefined();
+    expect(new RegExp(exempt ?? "").test("pkg/src/handlers/main.ts")).toBe(true);
+  });
+});
+
+describe("graph rules", () => {
+  const lowered = lowerManifest({
+    ...base({}),
+    graph: {
+      cycles: [{ name: "no-cycles", message: "…", within: "@/**", withinNot: "**/*.test.ts" }],
+      orphans: [{ name: "no-orphans", message: "…", within: "@/**", entry: "@/index.ts" }],
+      reach: [
+        {
+          name: "via-ports",
+          message: "…",
+          from: "@/adapters/**",
+          to: "@/infra/**",
+          via: "@/ports/**",
+        },
+      ],
+    },
+  });
+
+  it("expands aliases in every scope and builds a two-node cycle as the probe", () => {
+    const [rule] = lowered.graph.cycles ?? [];
+    expect(new RegExp(rule?.within[0] ?? "").test("pkg/src/a.ts")).toBe(true);
+    expect(new RegExp(rule?.withinNot?.[0] ?? "").test("pkg/src/a.test.ts")).toBe(true);
+    expect(rule?.probe.edges).toHaveLength(2);
+    expect(rule?.probe.edges[0]?.[0]).toMatch(/^pkg\/src\//);
+  });
+
+  it("probes an orphan rule with a lone file in scope", () => {
+    const [rule] = lowered.graph.orphans ?? [];
+    expect(rule?.probe.edges).toEqual([]);
+    expect(rule?.probe.files?.[0]).toMatch(/^pkg\/src\/.*zz-orphan\.ts$/);
+    expect(new RegExp(rule?.entry[0] ?? "").test("pkg/src/index.ts")).toBe(true);
+  });
+
+  it("probes a reach rule with a direct edge that touches no via", () => {
+    const [rule] = lowered.graph.reach ?? [];
+    const [edge] = rule?.probe.edges ?? [];
+    expect(edge?.[0]).toMatch(/^pkg\/src\/adapters\//);
+    expect(edge?.[1]).toMatch(/^pkg\/src\/infra\//);
+    expect(new RegExp(rule?.via?.[0] ?? "").test("pkg/src/ports/p.ts")).toBe(true);
+  });
+
+  it("lowers to no graph rules when the manifest has no graph section", () => {
+    expect(lowerManifest(base({})).graph).toEqual({ cycles: [], orphans: [], reach: [] });
+  });
+});
+
+describe("adoption", () => {
+  it("lists the nodes that said unrestricted or partial, by name", () => {
+    const lowered = lowerManifest(
+      base({
+        "@/legacy/": {
+          layout: "open",
+          children: {},
+          imports: { message: "…", unrestricted: true },
+        },
+        "@/wip/": { partial: true, children: { "*.ts": {} } },
+        "@/done/": {
+          layout: "open",
+          children: {},
+          imports: { message: "…", allow: ["@/done/**"] },
+        },
+      }),
+    );
+    expect(lowered.adoption).toEqual({ unrestricted: ["legacy"], partial: ["wip"] });
+  });
+});
+
+describe("member rules", () => {
+  it("covers the subtree when stated on a folder, as imports does", () => {
+    const lowered = lowerManifest(
+      base({
+        "@/core/": {
+          layout: "open",
+          children: {},
+          members: [{ message: "core reads no file.", subject: "calls", match: "readFileSync" }],
+        },
+      }),
+    );
+
+    const [rule] = lowered.members;
+    const from = new RegExp(rule?.from as string);
+    expect(from.test("pkg/src/core/imports.ts")).toBe(true);
+    expect(from.test("pkg/src/core/deep/nested.ts")).toBe(true);
+    expect(from.test("pkg/src/domain/x.ts")).toBe(false);
+    expect(from.test(rule?.probe.from as string)).toBe(true);
+  });
+
+  it("carries an authored probe's source and name, and drops the synthetic `in`", () => {
+    const lowered = lowerManifest(
+      base({
+        "@/domain/": {
+          children: {
+            "*.repository.ts": {
+              members: [
+                {
+                  message: "Not in the vocabulary.",
+                  subject: "type-members",
+                  in: "*RepositoryShape",
+                  allow: ["findOne"],
+                  probe: {
+                    source: "export type X = { findOneById(): void };",
+                    name: "findOneById",
+                  },
+                },
+              ],
+            },
+          },
+        },
+      }),
+    );
+
+    const [rule] = lowered.members;
+    expect(rule?.probe.name).toBe("findOneById");
+    expect(rule?.probe.source).toBe("export type X = { findOneById(): void };");
+    expect(rule?.probe.in).toBeUndefined();
+    expect(rule?.probe.from).toMatch(/\.repository\.ts$/);
+  });
 });
 
 describe("naming", () => {

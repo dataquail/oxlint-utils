@@ -93,6 +93,138 @@ describe("loadPolicy", () => {
     ).rejects.toThrow(/do not report their own probe/);
   });
 
+  // The point of an authored probe. Both members rules below are written the
+  // same way; only the snippet differs. The synthetic probe passes both. The
+  // real parser reads a member out of the interface and nothing out of the
+  // class body — so the second rule is refused at load, today, rather than
+  // silently enforcing nothing until someone widens the extractor.
+  const membersRuleWith = (probe: string) => `tree: {
+    "packages/server/src/modules/{module}/domain/": {
+      children: {
+        "*.repository.ts": {
+          members: [
+            {
+              message: 'Port method "{name}" is not in the vocabulary.',
+              subject: "type-members",
+              in: "*RepositoryShape",
+              allow: ["findOne"],
+              probe: ${probe},
+            },
+          ],
+        },
+      },
+    },
+  }`;
+
+  it("loads a member rule whose source probe the parser reads and the rule reports", async () => {
+    const probe = `{ source: "export interface TodosRepositoryShape { findOneById(): void }", name: "findOneById" }`;
+    const policy = await loadPolicy(
+      repoRoot,
+      writeConfig(`export default { ${RESOLVE}, ${membersRuleWith(probe)} };`),
+    );
+    expect(policy.memberRules).toHaveLength(1);
+  });
+
+  it("refuses a member rule whose source probe is a shape the parser does not read", async () => {
+    const probe = `{ source: "export class TodosRepositoryShape { findOneById(): void {} }", name: "findOneById" }`;
+    await expect(
+      loadPolicy(
+        repoRoot,
+        writeConfig(`export default { ${RESOLVE}, ${membersRuleWith(probe)} };`),
+      ),
+    ).rejects.toThrow(/architecture facts/);
+  });
+
+  it("checks an export restriction's source probe through the parser too", async () => {
+    // A default import, against a rule that (by default) covers named bindings only.
+    const restriction = `exports: [{
+      name: "no-factories",
+      message: "A factory is built at a composition root.",
+      module: "lib/**",
+      symbols: ["makeBus"],
+      probe: { source: 'import makeBus from "lib/bus";', symbol: "default" },
+    }]`;
+    await expect(
+      loadPolicy(repoRoot, writeConfig(`export default { ${RESOLVE}, ${restriction}, tree: {} };`)),
+    ).rejects.toThrow(/no-factories/);
+  });
+
+  it("refuses a restriction whose symbols can never meet its kinds", async () => {
+    // A default binding is only ever named `default`, so a rule listing both a
+    // symbol and the default kind could never fire on either form.
+    const restriction = `exports: [{
+      name: "contradiction",
+      message: "…",
+      module: "lib/**",
+      symbols: ["makeBus"],
+      kinds: ["default"],
+    }]`;
+    await expect(
+      loadPolicy(repoRoot, writeConfig(`export default { ${RESOLVE}, ${restriction}, tree: {} };`)),
+    ).rejects.toThrow(/contradiction/);
+  });
+
+  it("loads a surface rule, and refuses one whose source probe the parser reads nothing from", async () => {
+    const tree = (probe: string) => `tree: {
+      "packages/web/src/": {
+        layout: "open",
+        children: {},
+        surface: [{ message: "No default exports.", kinds: ["default"], probe: ${probe} }],
+      },
+    }`;
+    const loaded = await loadPolicy(
+      repoRoot,
+      writeConfig(`export default { ${RESOLVE}, ${tree('{ source: "export default 1;" }')} };`),
+    );
+    expect(loaded.surfaceRules).toHaveLength(1);
+
+    await expect(
+      loadPolicy(
+        repoRoot,
+        writeConfig(`export default { ${RESOLVE}, ${tree('{ source: "export const x = 1;" }')} };`),
+      ),
+    ).rejects.toThrow(/surface-0/);
+  });
+
+  it("compiles and probes graph rules, whichever adapter loads", async () => {
+    const graph = (via: string) => `graph: {
+      reach: [{ name: "via-ports", message: "…", from: "src/adapters/**", to: "src/infra/**", via: "${via}" }],
+    }`;
+    const loaded = await loadPolicy(
+      repoRoot,
+      writeConfig(`export default { ${RESOLVE}, ${graph("src/ports/**")}, tree: {} };`),
+    );
+    expect(loaded.graph.reach).toHaveLength(1);
+
+    // A `via` that covers the target itself: nothing could ever be reached
+    // without passing through it, so the rule enforces nothing.
+    await expect(
+      loadPolicy(
+        repoRoot,
+        writeConfig(`export default { ${RESOLVE}, ${graph("src/infra/**")}, tree: {} };`),
+      ),
+    ).rejects.toThrow(/via-ports/);
+  });
+
+  it("refuses a policy with more unrestricted tiers than its own ceiling allows", async () => {
+    const tree = `tree: {
+      "packages/web/src/": { layout: "open", children: {}, imports: { message: "…", unrestricted: true } },
+      "packages/api/src/": { layout: "open", children: {}, imports: { message: "…", unrestricted: true } },
+    }`;
+    const loaded = await loadPolicy(
+      repoRoot,
+      writeConfig(`export default { ${RESOLVE}, limits: { unrestricted: 2 }, ${tree} };`),
+    );
+    expect(loaded.adoption.unrestricted).toHaveLength(2);
+
+    await expect(
+      loadPolicy(
+        repoRoot,
+        writeConfig(`export default { ${RESOLVE}, limits: { unrestricted: 1 }, ${tree} };`),
+      ),
+    ).rejects.toThrow(/adoption ceiling.*unrestricted: 2 nodes against a ceiling of 1/);
+  });
+
   it("compiles the repo's own policy, so this suite fails if that config breaks", async () => {
     const policy = await loadPolicy(repoRoot);
     expect(policy.importRules.length).toBeGreaterThan(0);

@@ -1,11 +1,14 @@
-import type {
-  ExportRule,
-  ImportRule,
-  MemberRule,
-  StructureFolder,
-  StructureNaming,
-  StructureParity,
-  StructureRoot,
+import {
+  type ExportRule,
+  type GraphConfig,
+  type ImportRule,
+  type MemberRule,
+  OPEN_LAYOUT,
+  type StructureFolder,
+  type StructureNaming,
+  type StructureParity,
+  type StructureRoot,
+  type SurfaceRule,
 } from "../domain/architecture-config.js";
 import { anchored, type CaptureIndex, globToRegexSource, prefixed } from "./glob.js";
 import {
@@ -23,6 +26,14 @@ export type LoweredRules = {
   readonly imports: ReadonlyArray<ImportRule>;
   readonly exports: ReadonlyArray<ExportRule>;
   readonly members: ReadonlyArray<MemberRule>;
+  readonly surface: ReadonlyArray<SurfaceRule>;
+  readonly graph: GraphConfig;
+  // The nodes that said "not tightened yet", by name — the adoption backlog,
+  // and what `limits` puts a ceiling on.
+  readonly adoption: {
+    readonly unrestricted: ReadonlyArray<string>;
+    readonly partial: ReadonlyArray<string>;
+  };
   readonly structure: {
     readonly roots: ReadonlyArray<StructureRoot>;
     readonly folders: ReadonlyArray<StructureFolder>;
@@ -35,7 +46,7 @@ const FOLDER_KEY = /\/$/;
 
 // The marker an open folder's allowlist carries: it admits any name, so it has
 // no layout policy to prove.
-export const ANY_FILE = "^.*$";
+export const ANY_FILE = OPEN_LAYOUT;
 
 // The `from` side of a rule that applies to every file, wherever the repository
 // happens to keep its packages.
@@ -250,6 +261,9 @@ export const lowerManifest = (manifest: Manifest): LoweredRules => {
   const imports: Array<ImportRule> = [];
   const exports: Array<ExportRule> = [];
   const members: Array<MemberRule> = [];
+  const surface: Array<SurfaceRule> = [];
+  const unrestrictedNodes: Array<string> = [];
+  const partialNodes: Array<string> = [];
   const roots: Array<StructureRoot> = [];
   const folders: Array<StructureFolder> = [];
   const parity: Array<StructureParity> = [];
@@ -268,6 +282,9 @@ export const lowerManifest = (manifest: Manifest): LoweredRules => {
       .filter((sibling) => !/[*{]/.test(sibling));
     const alternatives = alternativesOf(key).map((one) => expandAliases(one, aliases));
     const [first = ""] = alternatives;
+
+    if (node.partial === true) partialNodes.push(name);
+    if (node.imports?.unrestricted === true) unrestrictedNodes.push(name);
     if (alternatives.length > 1 && alternatives.some((one) => one.includes("{"))) {
       throw new Error(
         `key "${key}" both names several patterns and declares a capture. A capture has to come ` +
@@ -611,17 +628,115 @@ export const lowerManifest = (manifest: Manifest): LoweredRules => {
       members.push({
         name: `${name}/members-${String(index)}`,
         message: spec.message,
-        probe: {
-          from: probePathOf(joinedGlob, ""),
-          name: probeMemberName(spec.match),
-          ...(spec.in === undefined ? {} : { in: "ZzProbeRepositoryShape" }),
-        },
-        from: selfPattern,
+        // An authored probe replaces the synthetic site: the name is the one
+        // the author says the snippet declares, and the declaration is the
+        // parser's to find.
+        probe:
+          spec.probe === undefined
+            ? {
+                from: scopeProbe,
+                name: probeMemberName(spec.match),
+                ...(spec.in === undefined ? {} : { in: "ZzProbeRepositoryShape" }),
+              }
+            : { from: scopeProbe, name: spec.probe.name, source: spec.probe.source },
+        // On a folder the rule covers the subtree, as `imports` does — a
+        // vocabulary is a statement about every file in a tier. Selecting the
+        // folder's own path instead governed no file, and the probe, a folder
+        // path, passed regardless.
+        from: scope,
         subject: spec.subject,
         ...(spec.in === undefined ? {} : { in: asRegex(spec.in) }),
         ...(spec.match === undefined ? {} : { match: asRegex(spec.match) }),
         ...(spec.matchNot === undefined ? {} : { matchNot: asRegex(spec.matchNot) }),
         ...(spec.allow === undefined ? {} : { allow: asRegex(spec.allow) }),
+      });
+    }
+
+    for (const [index, spec] of (node.surface ?? []).entries()) {
+      const ruleName = `${name}/surface-${String(index)}`;
+      const asName = (globs: string | ReadonlyArray<string>) =>
+        globsOf(globs).map((one) =>
+          anchored(
+            globToRegexSource(one, compiled.captures, { declaring: false, nextGroup }).source,
+          ),
+        );
+      const asPath = (glob: string) =>
+        prefixed(
+          globToRegexSource(expandAliases(glob, aliases), compiled.captures, {
+            declaring: false,
+            nextGroup,
+          }).source,
+        );
+
+      const demands = [spec.allow, spec.convention, spec.count].filter(
+        (one) => one !== undefined,
+      ).length;
+      if (demands > 1) {
+        throw new Error(
+          `surface rule "${ruleName}" states more than one of allow, convention and count. ` +
+            `A rule makes one demand; write one entry per demand.`,
+        );
+      }
+
+      const kind = spec.kinds?.[0] ?? "named";
+      const conventionSource =
+        spec.convention === undefined
+          ? undefined
+          : typeof spec.convention === "string"
+            ? CONVENTIONS[spec.convention]?.source
+            : spec.convention.regex;
+
+      // The synthetic probe: one site the rule must reject, or for `count`, a
+      // surface of the wrong size. A count nothing can violate — no minimum, no
+      // maximum — is a rule that never reports, and is refused here.
+      const siteName =
+        kind === "default"
+          ? "default"
+          : kind === "namespace"
+            ? "*"
+            : spec.convention !== undefined
+              ? violatingSampleFor(spec.convention, ruleName)
+              : probeMemberName(spec.match);
+      const oneSite = {
+        name: siteName,
+        kind,
+        ...(spec.declares?.[0] === undefined ? {} : { declares: spec.declares[0] }),
+        ...(spec.reexport === undefined ? {} : { reexport: spec.reexport }),
+      };
+      const probeSites = (): ReadonlyArray<typeof oneSite> => {
+        if (spec.count === undefined) return [oneSite];
+        const min = spec.count.min ?? 0;
+        if (min > 0) return [];
+        if (spec.count.max === undefined) {
+          throw new Error(
+            `surface rule "${ruleName}" states a count with no minimum and no maximum, ` +
+              `which nothing can violate.`,
+          );
+        }
+        return Array.from({ length: spec.count.max + 1 }, (_, i) => ({
+          ...oneSite,
+          name: `${siteName}${String(i)}`,
+        }));
+      };
+
+      surface.push({
+        name: ruleName,
+        message: spec.message,
+        probe:
+          spec.probe === undefined
+            ? { from: scopeProbe, sites: probeSites() }
+            : { from: scopeProbe, source: spec.probe.source },
+        from: scope,
+        ...(spec.except === undefined ? {} : { fromNot: globsOf(spec.except).map(asPath) }),
+        ...(spec.kinds === undefined ? {} : { kinds: [...spec.kinds] }),
+        ...(spec.declares === undefined ? {} : { declares: [...spec.declares] }),
+        ...(spec.reexport === undefined ? {} : { reexport: spec.reexport }),
+        ...(spec.match === undefined ? {} : { match: asName(spec.match) }),
+        ...(spec.matchNot === undefined ? {} : { matchNot: asName(spec.matchNot) }),
+        ...(spec.forbid === undefined ? {} : { forbid: spec.forbid }),
+        ...(spec.allow === undefined ? {} : { allow: asName(spec.allow) }),
+        ...(conventionSource === undefined ? {} : { convention: conventionSource }),
+        ...(spec.count === undefined ? {} : { count: spec.count }),
       });
     }
 
@@ -711,26 +826,94 @@ export const lowerManifest = (manifest: Manifest): LoweredRules => {
         globToRegexSource(expandAliases(glob, aliases), {}, { declaring: false, nextGroup: 1 })
           .source,
       );
+    // The synthetic probe is a binding of the rule's first kind. A default
+    // binding is only ever named `default` and a namespace one `*`, so a rule
+    // that lists `symbols` alongside those kinds cannot cover its probe — and
+    // is refused at load, which is right: it could never fire on such a form.
+    const kind = rule.kinds?.[0] ?? "named";
+    const symbol =
+      rule.probe?.symbol ??
+      (kind === "namespace" ? "*" : kind === "default" ? "default" : rule.symbols?.[0]) ??
+      "zzProbeSymbol";
     exports.push({
       name: rule.name,
       message: rule.message,
       probe: {
         from: "packages/zzprobe/anywhere.ts",
         to: probePathOf(expandAliases(globsOf(rule.module)[0] ?? "", aliases), ""),
-        symbol: rule.symbols?.[0] ?? "zzProbeSymbol",
+        symbol,
+        kind,
+        ...(rule.probe === undefined ? {} : { source: rule.probe.source }),
       },
       from: EVERY_FILE,
       ...(rule.except === undefined ? {} : { fromNot: globsOf(rule.except).map(asPattern) }),
       to: globsOf(rule.module).map(asPattern),
       ...(rule.symbols === undefined ? {} : { symbols: [...rule.symbols] }),
+      ...(rule.kinds === undefined ? {} : { kinds: [...rule.kinds] }),
       ...(rule.fix === undefined ? {} : { fix: rule.fix }),
     });
   }
+
+  // Graph rules pass through with their globs resolved, and a probe built from
+  // the shape each is about: two files importing each other, a file nothing
+  // imports, a direct edge from `from` to `to` that touches no `via`.
+  const asGraphPattern = (glob: string) =>
+    prefixed(
+      globToRegexSource(expandAliases(glob, aliases), {}, { declaring: false, nextGroup: 1 })
+        .source,
+    );
+  const asGraphPatterns = (globs: string | ReadonlyArray<string> | undefined) =>
+    globs === undefined ? undefined : globsOf(globs).map(asGraphPattern);
+  const probeFileIn = (globs: string | ReadonlyArray<string>, leaf: string) =>
+    probePathOf(expandAliases(globsOf(globs)[0] ?? "", aliases), leaf);
+  const graph: GraphConfig = {
+    cycles: (manifest.graph?.cycles ?? []).map((rule) => {
+      const a = probeFileIn(rule.within, "zz-alpha.ts");
+      const b = probeFileIn(rule.within, "zz-beta.ts");
+      return {
+        name: rule.name,
+        message: rule.message,
+        probe: {
+          edges: [
+            [a, b],
+            [b, a],
+          ],
+        },
+        within: globsOf(rule.within).map(asGraphPattern),
+        ...(rule.withinNot === undefined
+          ? {}
+          : { withinNot: asGraphPatterns(rule.withinNot) ?? [] }),
+      };
+    }),
+    orphans: (manifest.graph?.orphans ?? []).map((rule) => ({
+      name: rule.name,
+      message: rule.message,
+      probe: { edges: [], files: [probeFileIn(rule.within, "zz-orphan.ts")] },
+      within: globsOf(rule.within).map(asGraphPattern),
+      ...(rule.withinNot === undefined ? {} : { withinNot: asGraphPatterns(rule.withinNot) ?? [] }),
+      entry: globsOf(rule.entry).map(asGraphPattern),
+    })),
+    reach: (manifest.graph?.reach ?? []).map((rule) => ({
+      name: rule.name,
+      message: rule.message,
+      probe: {
+        edges: [[probeFileIn(rule.from, "zz-origin.ts"), probeFileIn(rule.to, "zz-target.ts")]],
+      },
+      from: globsOf(rule.from).map(asGraphPattern),
+      ...(rule.fromNot === undefined ? {} : { fromNot: asGraphPatterns(rule.fromNot) ?? [] }),
+      to: globsOf(rule.to).map(asGraphPattern),
+      ...(rule.toNot === undefined ? {} : { toNot: asGraphPatterns(rule.toNot) ?? [] }),
+      ...(rule.via === undefined ? {} : { via: asGraphPatterns(rule.via) ?? [] }),
+    })),
+  };
 
   return {
     imports,
     exports,
     members,
+    surface,
+    graph,
+    adoption: { unrestricted: unrestrictedNodes, partial: partialNodes },
     structure: { roots, folders, parity, naming: namingRules },
   };
 };
