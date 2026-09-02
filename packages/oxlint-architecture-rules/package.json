@@ -1,6 +1,6 @@
 {
   "name": "oxlint-architecture-rules",
-  "version": "0.0.0",
+  "version": "0.1.0-beta.0",
   "type": "module",
   "license": "MIT",
   "description": "Architecture policy as configuration, enforced as one oxlint plugin: import boundaries over resolved module paths, restricted export sites, folder taxonomy with sibling parity, and declared-member allowlists.",
