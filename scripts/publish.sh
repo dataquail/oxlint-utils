@@ -115,6 +115,29 @@ done
 # there answers the question the exit code was only ever standing in for, and
 # makes a re-run idempotent for the right reason rather than by pattern-matching
 # on prose npm is free to reword.
+# The registry is not read-your-writes. A publish returns before the new version
+# is readable — measurably so for a brand-new package name, where the first live
+# run of this saw "Published to ..." and a 404 from `npm view` 0.4 seconds later
+# and reported a successful publish as a failure.
+#
+# So retry with backoff before believing a miss. The wait is only ever paid when
+# a version is genuinely absent, which is the case that is about to fail anyway.
+on_registry() {
+  local spec="$1" attempt=0 delay=2
+  while :; do
+    if npm view "$spec" version >/dev/null 2>&1; then
+      return 0
+    fi
+    attempt=$((attempt + 1))
+    if [ "$attempt" -ge 6 ]; then
+      return 1
+    fi
+    echo "     not visible yet, retrying in ${delay}s (attempt ${attempt}/6)..."
+    sleep "$delay"
+    delay=$((delay * 2))
+  done
+}
+
 echo
 echo "Verifying against the registry..."
 
@@ -129,7 +152,7 @@ for manifest in packages/*/package.json; do
     continue
   fi
 
-  if npm view "$name@$version" version >/dev/null 2>&1; then
+  if on_registry "$name@$version"; then
     echo "  ✅ $name@$version is on the registry"
   else
     echo "  ❌ $name@$version is NOT on the registry"
