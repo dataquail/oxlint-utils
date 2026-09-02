@@ -64,6 +64,7 @@ const policy = (present: ReadonlyArray<string>): LoadedPolicy => {
     memberRules: [],
     surfaceRules: [],
     graph: EMPTY_GRAPH_RULES,
+    adoption: { unrestricted: [], partial: [] },
     structure: structure.success,
     fileSystem: makeFileSystemFake(present),
     resolver: makeModuleResolverFake({}),

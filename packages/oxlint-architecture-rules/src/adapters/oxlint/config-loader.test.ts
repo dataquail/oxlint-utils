@@ -206,6 +206,25 @@ describe("loadPolicy", () => {
     ).rejects.toThrow(/via-ports/);
   });
 
+  it("refuses a policy with more unrestricted tiers than its own ceiling allows", async () => {
+    const tree = `tree: {
+      "packages/web/src/": { layout: "open", children: {}, imports: { message: "…", unrestricted: true } },
+      "packages/api/src/": { layout: "open", children: {}, imports: { message: "…", unrestricted: true } },
+    }`;
+    const loaded = await loadPolicy(
+      repoRoot,
+      writeConfig(`export default { ${RESOLVE}, limits: { unrestricted: 2 }, ${tree} };`),
+    );
+    expect(loaded.adoption.unrestricted).toHaveLength(2);
+
+    await expect(
+      loadPolicy(
+        repoRoot,
+        writeConfig(`export default { ${RESOLVE}, limits: { unrestricted: 1 }, ${tree} };`),
+      ),
+    ).rejects.toThrow(/adoption ceiling.*unrestricted: 2 nodes against a ceiling of 1/);
+  });
+
   it("compiles the repo's own policy, so this suite fails if that config breaks", async () => {
     const policy = await loadPolicy(repoRoot);
     expect(policy.importRules.length).toBeGreaterThan(0);

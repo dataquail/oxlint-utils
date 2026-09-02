@@ -328,5 +328,9 @@ export type StructureFolder = (typeof StructureFolder)["Type"];
 export type StructureParity = (typeof StructureParity)["Type"];
 export type StructureNaming = (typeof StructureNaming)["Type"];
 
+// The file pattern an open folder's layout rule carries: it admits any name,
+// so it claims the folder without policing it. Coverage counts it apart.
+export const OPEN_LAYOUT = "^.*$";
+
 export const patternsOf = (patterns: string | ReadonlyArray<string>): ReadonlyArray<string> =>
   typeof patterns === "string" ? [patterns] : patterns;

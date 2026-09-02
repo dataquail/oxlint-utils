@@ -241,6 +241,7 @@ const policy: LoadedPolicy = {
   memberRules: unwrap(compileMemberRules(config.members)),
   surfaceRules: unwrap(compileSurfaceRules(config.surface)),
   graph: EMPTY_GRAPH_RULES,
+  adoption: { unrestricted: [], partial: [] },
   structure: EMPTY_STRUCTURE,
   fileSystem: makeFileSystemFake([]),
   resolver,

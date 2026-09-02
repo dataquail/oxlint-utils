@@ -44,7 +44,7 @@ import { ConfigInvalid } from "../../domain/architecture-error.js";
 import { makeFactExtractorLive } from "../../infrastructure/fact-extractor-live.js";
 import { makeFileSystemLive } from "../../infrastructure/file-system-live.js";
 import { makeModuleResolverLive } from "../../infrastructure/module-resolver-live.js";
-import { lowerManifest } from "../../manifest/compile.js";
+import { type LoweredRules, lowerManifest } from "../../manifest/compile.js";
 import { decodeManifest, type Manifest } from "../../manifest/manifest.js";
 import type { FileSystem } from "../../ports/file-system.js";
 import type { ModuleResolver } from "../../ports/module-resolver.js";
@@ -59,6 +59,7 @@ export type LoadedPolicy = {
   // Evaluated by the CLI only; compiled and probed here so a vacuous one fails
   // the plugin's load as well.
   readonly graph: CompiledGraph;
+  readonly adoption: LoweredRules["adoption"];
   readonly structure: CompiledStructure;
   readonly fileSystem: FileSystem;
   // Violations this repository is carrying while it adopts the policy. Applied
@@ -102,6 +103,30 @@ export const loadPolicy = async (
 
   // The manifest is the authoring surface; these flat rules are the machine's.
   const rules = lowerManifest(config);
+
+  // The ceilings. A tier that says "not tightened yet" is a sentence someone
+  // wrote; a ceiling on how many may say so is what keeps the backlog from
+  // becoming the architecture. Exceeding it is a policy that broke its own
+  // promise, and is refused like any other invalid policy.
+  const ceilings = [
+    ["unrestricted", rules.adoption.unrestricted, config.limits?.unrestricted],
+    ["partial", rules.adoption.partial, config.limits?.partial],
+  ] as const;
+  const exceeded = ceilings.flatMap(([label, nodes, ceiling]) =>
+    ceiling !== undefined && nodes.length > ceiling
+      ? [
+          `${label}: ${String(nodes.length)} nodes against a ceiling of ${String(ceiling)} (${nodes.join(", ")})`,
+        ]
+      : [],
+  );
+  if (exceeded.length > 0) {
+    throw new ConfigInvalid({
+      configPath,
+      detail:
+        `the policy exceeds its own adoption ceiling — ${exceeded.join("; ")}. ` +
+        `Tighten a tier, or raise the ceiling in \`limits\` on purpose.`,
+    });
+  }
 
   const importRules = compileImportRules(rules.imports);
   if (Result.isFailure(importRules)) throw importRules.failure;
@@ -154,6 +179,7 @@ export const loadPolicy = async (
     memberRules: memberRules.success,
     surfaceRules: surfaceRules.success,
     graph: graph.success,
+    adoption: rules.adoption,
     structure: structure.success,
     fileSystem: makeFileSystemLive(repoRoot),
     baseline: makeBaselineFilter(

@@ -89,6 +89,17 @@ export default {
     },
   ],
 
+  // Ratchets on the policy itself. No tier here says "not tightened yet", and
+  // the ceilings say none may start to without this line changing. The floors
+  // are the reach `architecture coverage` reported when they were written.
+  limits: {
+    unrestricted: 0,
+    partial: 0,
+    // Every folder here is `layout: "open"`, so structure is 0% enumerated and
+    // states no floor. The rest are the numbers on the day they were written.
+    coverage: { imports: 1, members: 0.39, surface: 0.98, graph: 0.61 },
+  },
+
   // The shape of the whole graph — evaluated by `architecture check`, which
   // is the one adapter that sees every file at once.
   graph: {

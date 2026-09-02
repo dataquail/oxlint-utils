@@ -601,6 +601,27 @@ describe("graph rules", () => {
   });
 });
 
+describe("adoption", () => {
+  it("lists the nodes that said unrestricted or partial, by name", () => {
+    const lowered = lowerManifest(
+      base({
+        "@/legacy/": {
+          layout: "open",
+          children: {},
+          imports: { message: "…", unrestricted: true },
+        },
+        "@/wip/": { partial: true, children: { "*.ts": {} } },
+        "@/done/": {
+          layout: "open",
+          children: {},
+          imports: { message: "…", allow: ["@/done/**"] },
+        },
+      }),
+    );
+    expect(lowered.adoption).toEqual({ unrestricted: ["legacy"], partial: ["wip"] });
+  });
+});
+
 describe("member rules", () => {
   it("covers the subtree when stated on a folder, as imports does", () => {
     const lowered = lowerManifest(

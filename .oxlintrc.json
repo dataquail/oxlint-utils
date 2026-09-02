@@ -30,6 +30,7 @@
     "es2018": true
   },
   "ignorePatterns": [
+    "packages/*/.tmp-*/**",
     "**/dist",
     "**/build",
     "**/docs",

@@ -1,13 +1,14 @@
-import type {
-  ExportRule,
-  GraphConfig,
-  ImportRule,
-  MemberRule,
-  StructureFolder,
-  StructureNaming,
-  StructureParity,
-  StructureRoot,
-  SurfaceRule,
+import {
+  type ExportRule,
+  type GraphConfig,
+  type ImportRule,
+  type MemberRule,
+  OPEN_LAYOUT,
+  type StructureFolder,
+  type StructureNaming,
+  type StructureParity,
+  type StructureRoot,
+  type SurfaceRule,
 } from "../domain/architecture-config.js";
 import { anchored, type CaptureIndex, globToRegexSource, prefixed } from "./glob.js";
 import {
@@ -27,6 +28,12 @@ export type LoweredRules = {
   readonly members: ReadonlyArray<MemberRule>;
   readonly surface: ReadonlyArray<SurfaceRule>;
   readonly graph: GraphConfig;
+  // The nodes that said "not tightened yet", by name — the adoption backlog,
+  // and what `limits` puts a ceiling on.
+  readonly adoption: {
+    readonly unrestricted: ReadonlyArray<string>;
+    readonly partial: ReadonlyArray<string>;
+  };
   readonly structure: {
     readonly roots: ReadonlyArray<StructureRoot>;
     readonly folders: ReadonlyArray<StructureFolder>;
@@ -39,7 +46,7 @@ const FOLDER_KEY = /\/$/;
 
 // The marker an open folder's allowlist carries: it admits any name, so it has
 // no layout policy to prove.
-export const ANY_FILE = "^.*$";
+export const ANY_FILE = OPEN_LAYOUT;
 
 // The `from` side of a rule that applies to every file, wherever the repository
 // happens to keep its packages.
@@ -255,6 +262,8 @@ export const lowerManifest = (manifest: Manifest): LoweredRules => {
   const exports: Array<ExportRule> = [];
   const members: Array<MemberRule> = [];
   const surface: Array<SurfaceRule> = [];
+  const unrestrictedNodes: Array<string> = [];
+  const partialNodes: Array<string> = [];
   const roots: Array<StructureRoot> = [];
   const folders: Array<StructureFolder> = [];
   const parity: Array<StructureParity> = [];
@@ -273,6 +282,9 @@ export const lowerManifest = (manifest: Manifest): LoweredRules => {
       .filter((sibling) => !/[*{]/.test(sibling));
     const alternatives = alternativesOf(key).map((one) => expandAliases(one, aliases));
     const [first = ""] = alternatives;
+
+    if (node.partial === true) partialNodes.push(name);
+    if (node.imports?.unrestricted === true) unrestrictedNodes.push(name);
     if (alternatives.length > 1 && alternatives.some((one) => one.includes("{"))) {
       throw new Error(
         `key "${key}" both names several patterns and declares a capture. A capture has to come ` +
@@ -901,6 +913,7 @@ export const lowerManifest = (manifest: Manifest): LoweredRules => {
     members,
     surface,
     graph,
+    adoption: { unrestricted: unrestrictedNodes, partial: partialNodes },
     structure: { roots, folders, parity, naming: namingRules },
   };
 };

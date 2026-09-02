@@ -13,6 +13,7 @@ import {
   staleEntriesOf,
   unbaselined,
 } from "../../core/baseline.js";
+import { coverageOf, coverageShortfalls, fractionsOf } from "../../core/coverage.js";
 import { evaluateSelectedBindings, exportRulesSelecting } from "../../core/exports.js";
 import { evaluateGraph, hasGraphRules } from "../../core/graph.js";
 import { evaluateSelectedEdge, rulesSelecting } from "../../core/imports.js";
@@ -186,9 +187,72 @@ export const check = (
       return yield* Effect.fail(fail("stale baseline entries"));
     }
 
+    // The floors. A policy states how much of the tree it reaches, per
+    // family; falling under is a policy that quietly stopped covering files.
+    const floors = policy.config.limits?.coverage;
+    const shortfalls =
+      floors === undefined
+        ? []
+        : coverageShortfalls(coverageOf(policy, listSourceFiles(policy.repoRoot, roots)), floors);
+    if (shortfalls.length > 0) {
+      yield* report([
+        "",
+        "coverage is below the floor the policy states for itself:",
+        ...shortfalls.map(
+          (one) => `  ${one.family}: ${percent(one.actual)} covered, floor ${percent(one.floor)}`,
+        ),
+        "",
+        "  architecture coverage    # which files no rule reaches",
+      ]);
+      return yield* Effect.fail(fail("coverage below floor"));
+    }
+
     if (reportable.length > 0 || findings.unresolved.length > 0) {
       return yield* Effect.fail(fail("architecture violations"));
     }
+  });
+
+const percent = (fraction: number): string => `${String(Math.floor(fraction * 100))}%`;
+
+// How much of the tree the policy reaches. A probe proves a rule can fire;
+// this is whether the files are there to fire on. Reported per family, with the
+// adoption backlog — the tiers that said "not tightened yet" — beneath it.
+export const coverage = (
+  policy: LoadedPolicy,
+  roots: ReadonlyArray<string>,
+): Effect.Effect<void, CliFailure> =>
+  Effect.gen(function* () {
+    const files = listSourceFiles(policy.repoRoot, roots);
+    const found = coverageOf(policy, files);
+    const fractions = fractionsOf(found);
+    const floors = policy.config.limits?.coverage ?? {};
+    const row = (family: keyof typeof fractions, covered: number, note: string): string => {
+      const floor = floors[family];
+      const mark =
+        floor === undefined
+          ? ""
+          : fractions[family] >= floor
+            ? `  ≥ ${percent(floor)} ✓`
+            : `  < ${percent(floor)} ✗`;
+      return `  ${family.padEnd(10)} ${String(covered).padStart(5)}/${String(found.files)}  ${percent(fractions[family]).padStart(4)}  ${note}${mark}`;
+    };
+
+    yield* report([
+      `${String(found.files)} files under ${roots.join(", ")}`,
+      "",
+      row("imports", found.imports.covered, "under an import allowlist"),
+      row(
+        "structure",
+        found.structure.enumerated,
+        `in an enumerated folder (${String(found.structure.open)} in an open one, ${String(found.structure.total - found.structure.enumerated - found.structure.open)} in none)`,
+      ),
+      row("members", found.members.covered, "selected by a members rule"),
+      row("surface", found.surface.covered, "selected by a surface rule"),
+      row("graph", found.graph.covered, "in a cycles or orphans scope"),
+      "",
+      `  unrestricted tiers: ${policy.adoption.unrestricted.length === 0 ? "(none)" : policy.adoption.unrestricted.join(", ")}`,
+      `  partial tiers:      ${policy.adoption.partial.length === 0 ? "(none)" : policy.adoption.partial.join(", ")}`,
+    ]);
   });
 
 export const writeBaseline = (
@@ -362,6 +426,8 @@ export const run = (
         if (file === undefined) return yield* Effect.fail(fail("explain needs a file path"));
         return yield* explain(policy, file);
       }
+      case "coverage":
+        return yield* coverage(policy, roots);
       case "facts": {
         const [file] = rest.filter((argument) => argument !== "--json");
         if (file === undefined) return yield* Effect.fail(fail("facts needs a file path"));
@@ -370,7 +436,7 @@ export const run = (
       default:
         return yield* Effect.fail(
           fail(
-            `unknown command "${command}". Try: check | baseline | explain <file> | facts <file> [--json]`,
+            `unknown command "${command}". Try: check | baseline | coverage | explain <file> | facts <file> [--json]`,
           ),
         );
     }

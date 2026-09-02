@@ -62,6 +62,7 @@ const policy = (): LoadedPolicy => {
     structure: EMPTY_STRUCTURE,
     surfaceRules: [],
     graph: EMPTY_GRAPH_RULES,
+    adoption: { unrestricted: [], partial: [] },
     fileSystem: makeFileSystemFake([]),
     resolver: makeModuleResolverFake({
       "@effect-server-utils/cqrs": CQRS_BARREL,

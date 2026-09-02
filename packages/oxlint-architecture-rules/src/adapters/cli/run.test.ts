@@ -11,6 +11,7 @@ import {
   check,
   type CliFailure,
   collectFindings,
+  coverage,
   explain,
   facts,
   run,
@@ -192,6 +193,30 @@ describe.sequential("explain", () => {
   });
 });
 
+describe.sequential("coverage", () => {
+  it("reports each family's reach and the adoption backlog", async () => {
+    const { output } = await captureReport(coverage(await loadPolicy(repoRoot), ["src", "lib"]));
+
+    expect(output).toContain("5 files under src, lib");
+    // src/ has an allowlist; lib/ does not.
+    expect(output).toMatch(/imports\s+2\/5\s+40%/);
+    expect(output).toContain("unrestricted tiers: (none)");
+  });
+
+  it("fails check when a family is under the floor the policy states", async () => {
+    const policy = await loadPolicy(repoRoot);
+    const floored = {
+      ...policy,
+      config: { ...policy.config, limits: { coverage: { imports: 0.5 } } },
+    };
+    const { exit, output } = await captureReport(check(floored, ["src", "lib"]));
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(output).toContain("coverage is below the floor");
+    expect(output).toContain("imports: 40% covered, floor 50%");
+  });
+});
+
 describe.sequential("facts", () => {
   it("prints every edge with its bindings, and every declared and called name", async () => {
     const { output } = await captureReport(
@@ -253,6 +278,12 @@ describe.sequential("run", () => {
     const { exit } = await captureReport(run(repoRoot, ["explain"]));
 
     expect(Exit.isFailure(exit)).toBe(true);
+  });
+
+  it("routes coverage", async () => {
+    const { exit } = await captureReport(run(repoRoot, ["coverage", "src", "lib"]));
+
+    expect(Exit.isSuccess(exit)).toBe(true);
   });
 
   it("routes facts, with --json anywhere in the arguments", async () => {

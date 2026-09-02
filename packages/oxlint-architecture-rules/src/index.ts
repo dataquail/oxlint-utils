@@ -1,3 +1,4 @@
+export { type Coverage, coverageOf, coverageShortfalls } from "./core/coverage.js";
 export { evaluateGraph, type Graph } from "./core/graph.js";
 export {
   type CompiledImportRule,

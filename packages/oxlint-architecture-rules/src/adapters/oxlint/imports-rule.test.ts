@@ -51,6 +51,7 @@ const makePolicy = (): LoadedPolicy => {
     structure: EMPTY_STRUCTURE,
     surfaceRules: [],
     graph: EMPTY_GRAPH_RULES,
+    adoption: { unrestricted: [], partial: [] },
     fileSystem: makeFileSystemFake([]),
     resolver: makeModuleResolverFake({
       "@org/database": "packages/database/src/index.ts",

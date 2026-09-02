@@ -59,6 +59,7 @@ const policy = (): LoadedPolicy => {
     structure: EMPTY_STRUCTURE,
     surfaceRules: [],
     graph: EMPTY_GRAPH_RULES,
+    adoption: { unrestricted: [], partial: [] },
     fileSystem: makeFileSystemFake([]),
     resolver: makeModuleResolverFake({}),
     ignoreUnresolved: [],

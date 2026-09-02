@@ -231,6 +231,25 @@ const Graph = Schema.Struct({
   reach: Schema.optionalKey(Schema.Array(GraphReach)),
 });
 
+// Ratchets on the policy itself. `unrestricted` and `partial` are the two
+// ways a tier says "not tightened yet"; a ceiling on how many may say so is
+// what stops the backlog growing. `coverage` is a floor, per family, on the
+// fraction of walked files a rule actually reaches — probes prove a rule can
+// fire; this proves the tree reaches the files.
+const CoverageFloors = Schema.Struct({
+  imports: Schema.optionalKey(Schema.Finite),
+  structure: Schema.optionalKey(Schema.Finite),
+  members: Schema.optionalKey(Schema.Finite),
+  surface: Schema.optionalKey(Schema.Finite),
+  graph: Schema.optionalKey(Schema.Finite),
+});
+
+const Limits = Schema.Struct({
+  unrestricted: Schema.optionalKey(Schema.Finite),
+  partial: Schema.optionalKey(Schema.Finite),
+  coverage: Schema.optionalKey(CoverageFloors),
+});
+
 export const Manifest = Schema.Struct({
   // How an import specifier becomes a file. Every pattern below is matched
   // against a resolved path, so this is what makes the rest of the file mean
@@ -244,6 +263,7 @@ export const Manifest = Schema.Struct({
   deny: Schema.optionalKey(Schema.Array(Denial)),
   exports: Schema.optionalKey(Schema.Array(ExportRestriction)),
   graph: Schema.optionalKey(Graph),
+  limits: Schema.optionalKey(Limits),
   // Shorthands expanded in every glob, so a pattern reads the way the repo's own
   // imports do rather than repeating `packages/server/src` on every line.
   aliases: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
@@ -256,6 +276,7 @@ export type ImportedBySpec = typeof ImportedBy.Type;
 export type MembersSpec = typeof Members.Type;
 export type SurfaceSpec = typeof Surface.Type;
 export type GraphSpec = typeof Graph.Type;
+export type LimitsSpec = typeof Limits.Type;
 export type NamingSpec = typeof Naming.Type;
 export type ExportRestriction = typeof ExportRestriction.Type;
 

@@ -49,6 +49,7 @@ pnpm run check:effect
 pnpm run lint:architecture
 pnpm run architecture:explain packages/oxlint-architecture-rules/src/core/imports.ts
 pnpm run architecture:facts packages/oxlint-architecture-rules/src/core/imports.ts   # what the parser read
+pnpm run architecture:coverage                                                     # how much of the tree the policy reaches
 
 # Everything, as the pre-commit hook runs it
 pnpm run precommit

@@ -297,6 +297,18 @@ The baseline is a ratchet on violations. Add ratchets on _policy_:
   rule _can_ fire; coverage proves the tree is actually _reached_. Optionally a ratchet:
   coverage may not decrease.
 
+**As landed:** `limits: { unrestricted, partial, coverage }`. The two ceilings are checked at
+load by both adapters and refuse the policy, naming the nodes. `architecture coverage`
+reports per family — `imports` counts files under an _allowlist_ (an `unrestricted` tier
+emits none), `structure` splits enumerated / open / none, `members` and `surface` by
+selection, `graph` by scope — with the adoption backlog beneath. `limits.coverage` gives
+floors, as fractions, that `check` enforces; they live in the manifest and rise by hand, so
+"may not decrease" needs no state file. Dogfooded with both ceilings at 0 and floors at the
+first real report's numbers — which also showed that every folder in this repo's own policy
+is `layout: "open"`: structure coverage is 0% _enumerated_, stated rather than hidden.
+**Phase 4 is deliberately skipped** for now — whether workspace-level policy is worth the
+surface needs exploratory work first.
+
 ---
 
 ## Deliberately not planned
@@ -322,8 +334,8 @@ Phase 0  facts cmd → parity test (+F3 fix) → fixture probes   [done]
 Phase 1  widen type-members [done] → kinds + export * [done] → dogfood members/exports [done]
 Phase 2  surface family   [done]
 Phase 3  graph pass → cycles → orphans → reach   [done]
-Phase 4  package.json → tsconfig → type-refs → receiver-aware calls
-Phase 5  unrestricted ceiling → coverage
+Phase 4  package.json → tsconfig → type-refs → receiver-aware calls   [skipped for now]
+Phase 5  unrestricted ceiling → coverage   [done]
 ```
 
 Phases 0 and 1 are the ones that protect the package's existing promise and should ship before

@@ -48,6 +48,7 @@ export default defineConfig({
                 { slug: "architecture-rules/enforcement/resolution" },
                 { slug: "architecture-rules/enforcement/probes" },
                 { slug: "architecture-rules/enforcement/baseline" },
+                { slug: "architecture-rules/enforcement/adoption" },
                 { slug: "architecture-rules/enforcement/cli" },
               ],
             },
