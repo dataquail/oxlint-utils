@@ -95,6 +95,17 @@ proves a rule _can_ fire, not that it fires on what you meant.
 **Imports use explicit `.js` extensions.** `moduleResolution` is `NodeNext` and the package is ESM —
 `import { x } from "./thing.js"` referring to `thing.ts` is correct, not a mistake to "fix".
 
+**`oxlint` and `@effect/tsgo` move together.** The `prepare` step runs `effect-tsgo patch --oxlint`,
+and that patch targets one exact oxlint version, so a bump is the pair (`1.81.0` with `@effect/tsgo`
+`^0.40.0`). Do not go below 1.78.0: 1.77.0's language server panics building the "disable this rule"
+quick-fix for any JS-plugin diagnostic (oxc #25278), so the architecture rules ran in CI and never
+surfaced in the editor. `.vscode/` points the editor at `oxc.oxc-vscode` for the same reason.
+
+**`no-redeclare` is off on purpose.** From oxlint 1.79.0 the rule reports TypeScript declaration
+merging — `export const X = Schema.Struct(…)` beside `export type X = …`, which is how every schema in
+`src/domain/` is written. Upstream closed it as not planned (oxc #25936). A real redeclaration is
+TS2451, and the compiler owns it.
+
 **`effect` is an exact dependency** (`4.0.0-beta.94`), pinned again in the root `pnpm.overrides`. Effect
 4 betas are mutually incompatible; bumping it is a coordinated breaking change.
 
