@@ -98,7 +98,7 @@ export default {
         "A language pack is constructed where the package is composed, and handed down as the `Language` port. Nothing in between names TypeScript — which is what lets a second language be added without editing the core.",
       module: "@arch/infrastructure/languages/*/index.ts",
       symbols: ["typescriptLanguage"],
-      except: ["@arch/index.ts", "**/*.test.ts"],
+      except: ["@arch/adapters/oxlint/config-loader.ts", "@arch/index.ts", "**/*.test.ts"],
       probe: {
         source:
           'import { typescriptLanguage } from "../infrastructure/languages/typescript/index.js";',

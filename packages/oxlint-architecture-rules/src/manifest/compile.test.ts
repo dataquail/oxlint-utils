@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { lowerManifest } from "./compile.js";
+import { lowerManifest as lowerWith, type ProbeLanguage } from "./compile.js";
 import type { Manifest } from "./manifest.js";
+
+// Every manifest below is a TypeScript one, so its synthetic probes are `.ts`
+// files. The language is what says so; lowering itself never assumes it.
+const TYPESCRIPT: ReadonlyArray<ProbeLanguage> = [
+  { id: "typescript", extensions: [".ts", ".tsx"] },
+];
+const lowerManifest = (manifest: Manifest) => lowerWith(manifest, TYPESCRIPT);
 
 const base = (tree: Manifest["tree"]): Manifest => ({
   resolve: {
@@ -823,5 +830,96 @@ describe("naming edge cases", () => {
     const [rule] = one({ name: convention, children: { "*.ts": {} } });
     expect(rule?.message).toContain(convention);
     expect(rule?.convention).toBeDefined();
+  });
+});
+
+describe("probe files and the language", () => {
+  const GO: ReadonlyArray<ProbeLanguage> = [{ id: "go", extensions: [".go"] }];
+  const goManifest: Manifest = {
+    resolve: { scopes: [{ files: "^svc/", language: "go" }] },
+    graph: {
+      orphans: [{ name: "no-orphans", message: "…", within: "svc/**", entry: "svc/main.go" }],
+    },
+    tree: {
+      "svc/": {
+        children: {
+          "main.go": {},
+          "domain/": {
+            imports: { message: "domain reaches itself.", allow: ["svc/domain/**"] },
+            children: { "*.go": {} },
+          },
+        },
+      },
+    },
+  };
+  const lowered = lowerWith(goManifest, GO);
+
+  // The whole point: nothing in lowering spells `.ts`. A scope in another
+  // language gets probes that are files of that language.
+  it("writes every synthetic probe as a file of the scope's language", () => {
+    expect(ruleNamed(lowered.imports, "svc/domain/imports").probe.from).toBe(
+      "svc/domain/zzprobe.go",
+    );
+    // The target the allowlist must refuse is a file of the importer's own
+    // language — an allowlist admitting `**/*.go` would otherwise pass its
+    // probe while admitting every Go file.
+    expect(ruleNamed(lowered.imports, "svc/domain/imports").probe.to).toBe(
+      "packages/zzprobe/nowhere.go",
+    );
+    expect(ruleNamed(lowered.structure.roots, "svc/taxonomy").probe.path).toBe(
+      "svc/zzprobe/stray.go",
+    );
+    expect(lowered.graph.orphans?.[0]?.probe.files).toEqual(["svc/deep/zz-orphan.go"]);
+  });
+
+  it("proves a folder's layout with a basename the folder rejects", () => {
+    const domain = ruleNamed(lowered.structure.folders, "svc/domain/layout");
+    const admitted = (basename: string) =>
+      (domain.files as ReadonlyArray<string>).some((one) => new RegExp(one).test(basename));
+    const stray = domain.probe.path.split("/").pop() ?? "";
+    expect(admitted("thing.go")).toBe(true);
+    expect(admitted(stray)).toBe(false);
+  });
+
+  // A folder that admits every `.ts` file still rejects a `.js` one, so it
+  // states a policy — and its probe has to be a name it rejects, which
+  // `zzprobe-stray.ts` is not.
+  it("proves a folder whose children are `*.ts` with a name outside that shape", () => {
+    const one = lowerManifest(base({ "@/lib/": { children: { "*.ts": {} } } }));
+    const rule = ruleNamed(one.structure.folders, "lib/layout");
+    expect(rule.probe.path).toBe("pkg/src/lib/zzprobe-stray");
+  });
+
+  it("refuses a folder that admits every name without saying `layout: open`", () => {
+    expect(() => lowerManifest(base({ "@/lib/": { children: { "*": {} } } }))).toThrow(
+      /admits every file name/,
+    );
+  });
+
+  it("gives a probe no extension where no scope's language is known", () => {
+    const unknown = lowerWith(base({ "@/lib/": { children: { "*.ts": {} } } }), []);
+    expect(ruleNamed(unknown.structure.roots, "@/lib/taxonomy").probe.path).toBe(
+      "pkg/src/lib/zzprobe/stray",
+    );
+  });
+
+  // A graph scope may name a file shape rather than a folder; the probe is
+  // then a file of that shape, not a file beneath it.
+  it("fills a file-shaped graph scope in place, keeping its extension", () => {
+    const one = lowerManifest({
+      ...base({}),
+      graph: {
+        cycles: [{ name: "c", message: "…", within: "@/**/*.ts" }],
+        reach: [{ name: "r", message: "…", from: "@/a/*.root.ts", to: "@/b/**" }],
+      },
+    });
+    expect(one.graph.cycles?.[0]?.probe.edges[0]).toEqual([
+      "pkg/src/deep/zz-alpha.ts",
+      "pkg/src/deep/zz-beta.ts",
+    ]);
+    expect(one.graph.reach?.[0]?.probe.edges[0]).toEqual([
+      "pkg/src/a/zz-origin.root.ts",
+      "pkg/src/b/deep/zz-target.ts",
+    ]);
   });
 });

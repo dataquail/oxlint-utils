@@ -43,6 +43,7 @@ import {
 import { ConfigInvalid } from "../../domain/architecture-error.js";
 import { makeFactExtractorLive } from "../../infrastructure/fact-extractor-live.js";
 import { makeFileSystemLive } from "../../infrastructure/file-system-live.js";
+import { typescriptLanguage } from "../../infrastructure/languages/typescript/index.js";
 import { makeModuleResolverLive } from "../../infrastructure/module-resolver-live.js";
 import { type LoweredRules, lowerManifest } from "../../manifest/compile.js";
 import { decodeManifest, type Manifest } from "../../manifest/manifest.js";
@@ -104,7 +105,9 @@ export const loadPolicy = async (
   const config = decoded.success.manifest;
 
   // The manifest is the authoring surface; these flat rules are the machine's.
-  const rules = lowerManifest(config);
+  // The languages tell lowering what a source file in each scope is called, so
+  // a synthetic probe is a file of the scope's language.
+  const rules = lowerManifest(config, [typescriptLanguage()]);
 
   // The ceilings. A tier that says "not tightened yet" is a sentence someone
   // wrote; a ceiling on how many may say so is what keeps the backlog from

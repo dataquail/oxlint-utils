@@ -52,7 +52,7 @@ export const ANY_FILE = OPEN_LAYOUT;
 // happens to keep its packages.
 const EVERY_FILE = "";
 
-// A key may name several patterns that share one node: the four `*-ops.ts`
+// A key may name several patterns that share one node: the four `*-ops`
 // stereotypes carry identical policy, and saying it once is the point of writing
 // the architecture as a tree.
 const ALTERNATIVE = /\s*\|\s*/;
@@ -93,6 +93,15 @@ type Frame = {
   readonly importsMessage: string;
   // Inherited like the allowlist: a tier states its naming convention once.
   readonly naming: NamingSpec | undefined;
+};
+
+// What lowering needs to know about a language: which scope ids name it, and
+// what a source file of it is called. Structurally a `Language`, so the host
+// passes its packs straight through; declared here so this tier never names
+// the port.
+export type ProbeLanguage = {
+  readonly id: string;
+  readonly extensions: ReadonlyArray<string>;
 };
 
 // A probe is the node's own path with its wildcards filled in, so a rule is
@@ -267,8 +276,56 @@ const mergeImports = (
   };
 };
 
-export const lowerManifest = (manifest: Manifest): LoweredRules => {
+export const lowerManifest = (
+  manifest: Manifest,
+  languages: ReadonlyArray<ProbeLanguage> = [],
+): LoweredRules => {
   const aliases = manifest.aliases ?? {};
+
+  // The extension a synthetic probe file carries: the first extension of the
+  // language whose scope covers the probe's folder. A probe is matched by its
+  // folder, so the extension only makes it a file that language would have —
+  // which matters exactly when an allowlist admits `**/*.<ext>`, and would
+  // otherwise pass its probe while admitting every file.
+  const extensionFor = (folder: string): string => {
+    const scope = manifest.resolve.scopes.find((one) =>
+      new RegExp(one.files).test(`${folder}/zzprobe`),
+    );
+    const language = languages.find((one) => one.id === scope?.language);
+    return language?.extensions[0] ?? "";
+  };
+
+  // A synthetic file inside a folder glob: the folder with its wildcards filled,
+  // then the stem, then whatever extension the folder's language uses.
+  const probeIn = (folderGlob: string, stem: string): string =>
+    probePathOf(folderGlob, `${stem}${extensionFor(probePathOf(folderGlob, ""))}`);
+
+  // A synthetic file somewhere no node governs, written like a file of the
+  // language at `likeFolder` so that it is refused by a rule about that
+  // language's files and not merely by one about its own folder.
+  const probeOutside = (stem: string, likeFolder = "packages/zzprobe"): string =>
+    `packages/zzprobe/${stem}${extensionFor(likeFolder)}`;
+
+  // The folder layout rule must be proven with a basename the folder rejects.
+  // What that is depends on what the folder admits: `zzprobe-stray.ts` is a
+  // file a `*.ts` folder is happy with.
+  const strayBasenameFor = (
+    admitted: ReadonlyArray<string>,
+    extension: string,
+    ruleName: string,
+  ): string => {
+    const candidates = [`zzprobe-stray${extension}`, "zzprobe-stray", "zzprobe.stray.zz"];
+    const rejected = candidates.find(
+      (candidate) => !admitted.some((pattern) => new RegExp(pattern).test(candidate)),
+    );
+    if (rejected === undefined) {
+      throw new Error(
+        `"${ruleName}" admits every file name this compiler can think of, so it enumerates ` +
+          `nothing. A folder that does not police its file names is \`layout: "open"\`; say so.`,
+      );
+    }
+    return rejected;
+  };
   const imports: Array<ImportRule> = [];
   const exports: Array<ExportRule> = [];
   const members: Array<MemberRule> = [];
@@ -357,7 +414,7 @@ export const lowerManifest = (manifest: Manifest): LoweredRules => {
     // after its folder" lives.
     //
     // A file's concept name is its basename up to the FIRST dot, not what a `*`
-    // matched: the key `*-live.ts` matches `todos.repository-live.ts`, whose
+    // matched: the key `*-live.<ext>` matches `todos.repository-live.<ext>`, whose
     // wildcard spans a stereotype segment as well as the concept.
     const naming = frame.naming;
     if (naming !== undefined) {
@@ -412,7 +469,7 @@ export const lowerManifest = (manifest: Manifest): LoweredRules => {
               `${name}/naming-folder`,
               [prefixed(`${pathSource}/`)],
               subject,
-              probePathOf(joinedGlob, "zzprobe.ts"),
+              probeIn(joinedGlob, "zzprobe"),
               undefined,
               "folder",
             );
@@ -422,7 +479,7 @@ export const lowerManifest = (manifest: Manifest): LoweredRules => {
           `${name}/naming`,
           [anchored(`${pathSource}/([^/.]+)[^/]*`)],
           nextGroup,
-          probePathOf(joinedGlob, "zzprobe.ts"),
+          probeIn(joinedGlob, "zzprobe"),
         );
       }
 
@@ -503,26 +560,34 @@ export const lowerManifest = (manifest: Manifest): LoweredRules => {
     if (isFolder) {
       const childKeys = childEntries;
       const fileKeys = childKeys.filter(([childKey]) => !isFolderKey(childKey));
-      if (node.partial !== true)
-        folders.push({
-          name: `${name}/layout`,
-          message: node.message ?? "This folder does not admit that file.",
-          probe: { path: probePathOf(joinedGlob, "zzprobe-stray.ts") },
-          folder: selfPattern,
-          // An open folder still CLAIMS its folder — otherwise no rule governs
-          // it and the taxonomy root fires — it just admits any file name.
-          files:
-            node.layout === "open"
-              ? [ANY_FILE]
-              : fileKeys.flatMap(([childKey]) =>
-                  alternativesOf(childKey).map((one) =>
-                    anchored(
-                      globToRegexSource(one, compiled.captures, { declaring: false, nextGroup })
-                        .source,
-                    ),
+      if (node.partial !== true) {
+        const ruleName = `${name}/layout`;
+        // An open folder still CLAIMS its folder — otherwise no rule governs
+        // it and the taxonomy root fires — it just admits any file name.
+        const admitted =
+          node.layout === "open"
+            ? [ANY_FILE]
+            : fileKeys.flatMap(([childKey]) =>
+                alternativesOf(childKey).map((one) =>
+                  anchored(
+                    globToRegexSource(one, compiled.captures, { declaring: false, nextGroup })
+                      .source,
                   ),
                 ),
+              );
+        const folderProbe = probePathOf(joinedGlob, "");
+        const stray =
+          node.layout === "open"
+            ? `zzprobe-stray${extensionFor(folderProbe)}`
+            : strayBasenameFor(admitted, extensionFor(folderProbe), ruleName);
+        folders.push({
+          name: ruleName,
+          message: node.message ?? "This folder does not admit that file.",
+          probe: { path: probePathOf(joinedGlob, stray) },
+          folder: selfPattern,
+          files: admitted,
         });
+      }
       const siblingKeys = childKeys.map(([childKey]) => childKey);
       for (const [childKey, child] of childKeys) {
         walk(childKey, child, frame, `${name}/${alternativesOf(childKey)[0] ?? ""}`, siblingKeys);
@@ -537,9 +602,11 @@ export const lowerManifest = (manifest: Manifest): LoweredRules => {
     // A file node emits its own only when it says something its folder did not.
     const emitsOwnImports = isFolder ? node.imports !== undefined : node.imports !== undefined;
     const scope = isFolder ? prefixed(`${pathSource}/`) : selfPattern;
-    const scopeProbe = isFolder
-      ? probePathOf(joinedGlob, "zzprobe.ts")
-      : probePathOf(joinedGlob, "");
+    const scopeProbe = isFolder ? probeIn(joinedGlob, "zzprobe") : probePathOf(joinedGlob, "");
+    // The folder a probe of this node sits in, for "a file of the same language".
+    const ownFolder = isFolder
+      ? probePathOf(joinedGlob, "")
+      : probePathOf(joinedGlob, "").replace(/\/[^/]*$/, "");
 
     const admitsEverything = frame.allow.some((pattern) => pattern === "^.*" || pattern === "^");
     const hasAllowlist =
@@ -560,7 +627,7 @@ export const lowerManifest = (manifest: Manifest): LoweredRules => {
         imports.push({
           name: `${name}/imports`,
           message: frame.importsMessage,
-          probe: { from: scopeProbe, to: "packages/zzprobe/nowhere.ts" },
+          probe: { from: scopeProbe, to: probeOutside("nowhere", ownFolder) },
           from: scope,
           ...exemptions,
           toNot: [...frame.allow],
@@ -575,7 +642,7 @@ export const lowerManifest = (manifest: Manifest): LoweredRules => {
       imports.push({
         name: `${name}/deny-${String(index)}`,
         message: denial.message,
-        probe: { from: probePathOf(joinedGlob, isFolder ? "zzprobe.ts" : ""), to: denial.probe },
+        probe: { from: scopeProbe, to: denial.probe },
         from: isFolder ? prefixed(`${pathSource}/`) : selfPattern,
         ...(denial.except.length > 0 ? { fromNot: [...denial.except] } : {}),
         to: denial.match,
@@ -621,10 +688,7 @@ export const lowerManifest = (manifest: Manifest): LoweredRules => {
       imports.push({
         name: `${name}/imported-by`,
         message: node.importedBy.message,
-        probe: {
-          from: "packages/zzprobe/outsider.ts",
-          to: probePathOf(joinedGlob, isFolder ? "zzprobe.ts" : ""),
-        },
+        probe: { from: probeOutside("outsider", ownFolder), to: scopeProbe },
         from: EVERY_FILE,
         fromNot: globsOf(node.importedBy.allow).map(asTarget),
         to: isFolder ? prefixed(`${pathSource}/`) : selfPattern,
@@ -794,7 +858,7 @@ export const lowerManifest = (manifest: Manifest): LoweredRules => {
     imports.push({
       name: `repo/deny-${String(index)}`,
       message: denial.message,
-      probe: { from: "packages/zzprobe/anywhere.ts", to: denial.probe },
+      probe: { from: probeOutside("anywhere"), to: denial.probe },
       from: EVERY_FILE,
       ...(denial.except.length > 0 ? { fromNot: [...denial.except] } : {}),
       to: denial.match,
@@ -812,7 +876,7 @@ export const lowerManifest = (manifest: Manifest): LoweredRules => {
         message:
           node.message ??
           "This folder is not part of the taxonomy. Declare it in the manifest deliberately, or move the file into the folder that owns it.",
-        probe: { path: probePathOf(expandAliases(stripSlash(key), aliases), "zzprobe/stray.ts") },
+        probe: { path: probeIn(`${expandAliases(stripSlash(key), aliases)}/zzprobe`, "stray") },
         path: prefixed(
           globToRegexSource(
             expandAliases(stripSlash(key), aliases),
@@ -854,7 +918,7 @@ export const lowerManifest = (manifest: Manifest): LoweredRules => {
       name: rule.name,
       message: rule.message,
       probe: {
-        from: "packages/zzprobe/anywhere.ts",
+        from: probeOutside("anywhere"),
         to: probePathOf(expandAliases(globsOf(rule.module)[0] ?? "", aliases), ""),
         symbol,
         kind,
@@ -879,12 +943,23 @@ export const lowerManifest = (manifest: Manifest): LoweredRules => {
     );
   const asGraphPatterns = (globs: string | ReadonlyArray<string> | undefined) =>
     globs === undefined ? undefined : globsOf(globs).map(asGraphPattern);
-  const probeFileIn = (globs: string | ReadonlyArray<string>, leaf: string) =>
-    probePathOf(expandAliases(globsOf(globs)[0] ?? "", aliases), leaf);
+  // A synthetic file inside a graph scope. A glob whose last segment names a
+  // file shape (`src/**/*.ts`) is filled in place and keeps its extension; a
+  // folder glob (`src/**`) gets a file of its language's added beneath it.
+  const probeFileIn = (globs: string | ReadonlyArray<string>, stem: string): string => {
+    const glob = expandAliases(globsOf(globs)[0] ?? "", aliases);
+    const at = glob.lastIndexOf("/");
+    const last = glob.slice(at + 1);
+    if (!last.includes(".")) return probeIn(glob, stem);
+    return probePathOf(
+      at === -1 ? "" : glob.slice(0, at),
+      last.replace(/\{[a-zA-Z][a-zA-Z0-9]*\}|\*+/g, stem),
+    );
+  };
   const graph: GraphConfig = {
     cycles: (manifest.graph?.cycles ?? []).map((rule) => {
-      const a = probeFileIn(rule.within, "zz-alpha.ts");
-      const b = probeFileIn(rule.within, "zz-beta.ts");
+      const a = probeFileIn(rule.within, "zz-alpha");
+      const b = probeFileIn(rule.within, "zz-beta");
       return {
         name: rule.name,
         message: rule.message,
@@ -903,7 +978,7 @@ export const lowerManifest = (manifest: Manifest): LoweredRules => {
     orphans: (manifest.graph?.orphans ?? []).map((rule) => ({
       name: rule.name,
       message: rule.message,
-      probe: { edges: [], files: [probeFileIn(rule.within, "zz-orphan.ts")] },
+      probe: { edges: [], files: [probeFileIn(rule.within, "zz-orphan")] },
       within: globsOf(rule.within).map(asGraphPattern),
       ...(rule.withinNot === undefined ? {} : { withinNot: asGraphPatterns(rule.withinNot) ?? [] }),
       entry: globsOf(rule.entry).map(asGraphPattern),
@@ -912,7 +987,7 @@ export const lowerManifest = (manifest: Manifest): LoweredRules => {
       name: rule.name,
       message: rule.message,
       probe: {
-        edges: [[probeFileIn(rule.from, "zz-origin.ts"), probeFileIn(rule.to, "zz-target.ts")]],
+        edges: [[probeFileIn(rule.from, "zz-origin"), probeFileIn(rule.to, "zz-target")]],
       },
       from: globsOf(rule.from).map(asGraphPattern),
       ...(rule.fromNot === undefined ? {} : { fromNot: asGraphPatterns(rule.fromNot) ?? [] }),
