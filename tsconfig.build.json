@@ -4,5 +4,10 @@
   // Every buildable package, so `tsc -b` orders the whole graph in one pass. Nx
   // runs each package's own build target on top of this; listing them here keeps
   // two packages that share a dependency from racing to write its .tsbuildinfo.
-  "references": [{ "path": "packages/oxlint-architecture-rules/tsconfig.build.json" }]
+  "references": [
+    { "path": "packages/core/tsconfig.build.json" },
+    { "path": "packages/typescript/tsconfig.build.json" },
+    { "path": "packages/cli/tsconfig.build.json" },
+    { "path": "packages/oxlint/tsconfig.build.json" }
+  ]
 }

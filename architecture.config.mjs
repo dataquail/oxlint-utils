@@ -22,11 +22,11 @@
 // that has drifted into matching nothing is the failure this whole apparatus
 // exists to prevent.
 //
-// This repository publishes the plugin that reads this file, so the policy is
-// also the package's largest test: a change that breaks lowering breaks the lint
-// run here first.
+// This repository publishes the packages that read this file, so the policy is
+// also their largest test: a change that breaks lowering breaks the lint run
+// here first.
 
-/** @type {import("oxlint-architecture-rules").Manifest} */
+/** @type {import("@goodbones/core").Manifest} */
 // "Given facts, they return violations; they never read a file." Stated as a
 // rule about calls rather than about imports: an import allowlist stops
 // `node:fs` at the door, but a `readFileSync` handed in as a callback, or
@@ -41,6 +41,38 @@ const NO_FILE_SYSTEM_CALLS = {
     name: "readFileSync",
   },
 };
+
+// The floor every package inherits: node builtins, the runtime, and the test
+// framework. Each package adds the packages it may reach; none of them `reset`,
+// so this floor cannot be dropped further down.
+const PACKAGE_FLOOR = {
+  external: ["effect", "vitest"],
+  allow: ["node:**", "vitest.shared.ts"],
+};
+
+// A package boundary is its barrel. Another package is reached by its published
+// name, which resolves to `index.ts` (or `testing.ts`); a deep import into a
+// sibling's `src/` is refused, as it would be for a consumer outside the repo.
+const CORE_SURFACE = ["@core/index.ts", "@core/testing.ts"];
+const TYPESCRIPT_SURFACE = ["@ts/index.ts"];
+
+// No default exports. A default has no name to grep for, and every importer may
+// call it something different. The oxlint plugin entry is the one exception:
+// oxlint reads a plugin as a module's default.
+const NAMED_EXPORTS_ONLY = (except) => [
+  {
+    message:
+      "No default exports. A default has no name to grep for, and every importer may call it something different.",
+    kinds: ["default"],
+    ...(except === undefined ? {} : { except }),
+    probe: { source: "export default function main() {}" },
+  },
+  {
+    message:
+      "Re-export by name, so a barrel says what the module is. `export *` takes every export at once and launders a restricted name through the barrel.",
+    kinds: ["namespace"],
+  },
+];
 
 export default {
   // Where a repository adopting this policy records the violations it is
@@ -67,7 +99,10 @@ export default {
 
   aliases: {
     "~": "packages",
-    "@arch": "packages/oxlint-architecture-rules/src",
+    "@core": "packages/core/src",
+    "@ts": "packages/typescript/src",
+    "@cli": "packages/cli/src",
+    "@ox": "packages/oxlint/src",
   },
 
   // Which exported names may cross which edges — the family a path rule cannot
@@ -76,38 +111,38 @@ export default {
     {
       name: "live-adapters-at-the-composition-root",
       message:
-        "A live adapter is constructed once, where the package is composed. Everything else takes the port it satisfies, or the fake — which is what lets it be tested without a file system or a resolver.",
-      module: "@arch/infrastructure/*-live.ts",
+        "A live adapter is constructed once, where a host is composed. Everything else takes the port it satisfies, or the fake — which is what lets it be tested without a file system, a parser or a resolver.",
+      module: [
+        "@core/infrastructure/file-system-live.ts",
+        "@core/index.ts",
+        "@ts/extractor.ts",
+        "@ts/resolver.ts",
+        "@ts/index.ts",
+      ],
       symbols: ["makeFileSystemLive", "makeModuleResolverLive", "makeFactExtractorLive"],
+      // The two hosts' composition roots; the barrels that re-export them; and
+      // the pack, which is what assembles its own extractor and resolver.
       except: [
-        "@arch/adapters/oxlint/config-loader.ts",
-        "@arch/adapters/cli/config-loader.ts",
-        // A language pack is what assembles the live extractor and resolver
-        // for its language, so it is the one other place that may name them.
-        "@arch/infrastructure/languages/*/index.ts",
-        "@arch/index.ts",
+        "@cli/config-loader.ts",
+        "@ox/config-loader.ts",
+        "@core/index.ts",
+        "@ts/index.ts",
         "**/*.test.ts",
       ],
       probe: {
-        source: 'import { makeFileSystemLive } from "../infrastructure/file-system-live.js";',
+        source: 'import { makeFileSystemLive } from "./infrastructure/file-system-live.js";',
         symbol: "makeFileSystemLive",
       },
     },
     {
       name: "language-packs-at-the-composition-root",
       message:
-        "A language pack is constructed where the package is composed, and handed down as the `Language` port. Nothing in between names TypeScript — which is what lets a second language be added without editing the core.",
-      module: "@arch/infrastructure/languages/*/index.ts",
+        "A language pack is constructed where a host is composed, and handed down as the `Language` port. Nothing in between names TypeScript — which is what lets a second language be added without editing the core.",
+      module: "@ts/index.ts",
       symbols: ["typescriptLanguage"],
-      except: [
-        "@arch/adapters/oxlint/config-loader.ts",
-        "@arch/adapters/cli/config-loader.ts",
-        "@arch/index.ts",
-        "**/*.test.ts",
-      ],
+      except: ["@cli/config-loader.ts", "@ox/config-loader.ts", "**/*.test.ts"],
       probe: {
-        source:
-          'import { typescriptLanguage } from "../infrastructure/languages/typescript/index.js";',
+        source: 'import { typescriptLanguage } from "@goodbones/typescript";',
         symbol: "typescriptLanguage",
       },
     },
@@ -115,9 +150,9 @@ export default {
       name: "name-what-you-take",
       message:
         "Name what you take from a sibling module. A namespace import or an `export *` takes every export at once, hides which are used, and launders a restricted name past every rule about it.",
-      module: "@arch/**",
+      module: "~/*/src/**",
       kinds: ["namespace"],
-      probe: { source: 'import * as imports from "../core/imports.js";', symbol: "*" },
+      probe: { source: 'import * as imports from "./core/imports.js";', symbol: "*" },
     },
   ],
 
@@ -128,10 +163,11 @@ export default {
     unrestricted: 0,
     partial: 0,
     // Every folder here is `layout: "open"`, so structure is 0% enumerated and
-    // states no floor. The rest are the numbers on the day they were written
-    // (members: 26/67 on 2026-09-04, after the language pack and the npm
-    // package helper joined infrastructure/, which no members rule selects).
-    coverage: { imports: 1, members: 0.38, surface: 0.98, graph: 0.61 },
+    // states no floor. The rest are the numbers on the day they were written:
+    // 2026-09-04, after the split into four packages — members is 28/76 (the
+    // core's domain, ports, core and load tiers), surface 72/76 (every file
+    // under a `src/`; the four `vitest.config.ts` are the remainder).
+    coverage: { imports: 1, members: 0.36, surface: 0.94, graph: 0.61 },
   },
 
   // The shape of the whole graph — evaluated by `architecture check`, which
@@ -142,7 +178,7 @@ export default {
         name: "no-cycles",
         message:
           "These files import each other, directly or through others. A cycle is a module boundary that does not exist.",
-        within: "@arch/**",
+        within: "~/*/src/**",
         withinNot: "**/*.test.ts",
       },
     ],
@@ -151,76 +187,79 @@ export default {
         name: "no-dead-modules",
         message:
           "Nothing imports this file. A module nothing reaches is either dead, or an entry point this policy has not listed.",
-        within: "@arch/**",
+        within: "~/*/src/**",
         withinNot: "**/*.test.ts",
-        entry: ["@arch/index.ts", "@arch/adapters/oxlint/plugin.ts", "@arch/adapters/cli/main.ts"],
+        entry: [
+          "@core/index.ts",
+          "@core/testing.ts",
+          "@ts/index.ts",
+          "@cli/main.ts",
+          "@ox/plugin.ts",
+        ],
       },
     ],
     reach: [
       {
         name: "pure-tiers-reach-no-adapter",
         message:
-          "The pure tiers — domain, ports, core, manifest, load — reach no live implementation and no delivery adapter, through any number of hops. That is what makes them testable without one.",
+          "The pure tiers — domain, ports, core, manifest, load — reach no live implementation, no language pack and no host, through any number of hops. That is what makes them testable without one.",
         from: [
-          "@arch/domain/**",
-          "@arch/ports/**",
-          "@arch/core/**",
-          "@arch/manifest/**",
-          "@arch/load/**",
+          "@core/domain/**",
+          "@core/ports/**",
+          "@core/core/**",
+          "@core/manifest/**",
+          "@core/load/**",
         ],
         fromNot: "**/*.test.ts",
-        to: ["@arch/infrastructure/*-live.ts", "@arch/adapters/**"],
+        to: [
+          "@core/infrastructure/file-system-live.ts",
+          "@core/infrastructure/walk.ts",
+          "@core/infrastructure/manifest-file.ts",
+          "@ts/**",
+          "@cli/**",
+          "@ox/**",
+        ],
       },
       {
-        name: "pure-tiers-reach-no-language-pack",
+        // The one line that proves the decoupling held: nothing in the core
+        // reaches TypeScript, or either host, through any number of hops.
+        name: "core-reaches-no-other-package",
         message:
-          "The pure tiers reach no language pack, through any number of hops. The manifest vocabulary is not TypeScript's; a second language is a second pack, not an edit to the core.",
-        from: [
-          "@arch/domain/**",
-          "@arch/ports/**",
-          "@arch/core/**",
-          "@arch/manifest/**",
-          "@arch/load/**",
-        ],
+          "The core reaches no other package. A second language is a second pack that depends on the core; the core depends on none of them.",
+        from: "@core/**",
         fromNot: "**/*.test.ts",
-        to: "@arch/infrastructure/languages/**",
+        to: ["@ts/**", "@cli/**", "@ox/**"],
+      },
+      {
+        name: "cli-never-reaches-the-plugin",
+        message:
+          "The two hosts answer to the same core, never to each other — so an alpha plugin API is not a single point of failure for the CLI.",
+        from: "@cli/**",
+        to: "@ox/**",
+      },
+      {
+        name: "plugin-never-reaches-the-cli",
+        message:
+          "The two hosts answer to the same core, never to each other — so the plugin carries nothing of the CLI's into a lint run.",
+        from: "@ox/**",
+        to: "@cli/**",
       },
     ],
   },
 
   tree: {
-    "~/oxlint-architecture-rules/": {
+    "~/core/": {
       message:
-        "oxlint-architecture-rules is a hexagon: a pure domain and core, ports for the two things it must touch, live and fake implementations behind them, and two delivery adapters that both answer to the same core.",
-      // The package root holds config files, not a taxonomy worth enumerating.
+        "@goodbones/core is a hexagon: a pure domain and core, ports for the things a language must provide, a fake per port, and the loader that turns a manifest into a policy. It names no language and no host.",
       layout: "open",
-      // The floor every tier inherits: node builtins, the runtime, and the test
-      // framework. Each tier below adds the repository paths it may reach; none
-      // of them `reset`, so this floor cannot be dropped further down.
       imports: {
-        message: "This import is not on this tier's allowlist.",
-        external: ["effect", "vitest"],
-        allow: ["node:**", "vitest.shared.ts"],
+        message: "This import is not on this package's allowlist.",
+        ...PACKAGE_FLOOR,
       },
       children: {
         "src/": {
           layout: "open",
-          // The plugin entry is the one default export: oxlint reads a plugin
-          // as a module's default. Everything else has a name to grep for.
-          surface: [
-            {
-              message:
-                "No default exports. A default has no name to grep for, and every importer may call it something different.",
-              kinds: ["default"],
-              except: ["@arch/adapters/oxlint/plugin.ts"],
-              probe: { source: "export default function main() {}" },
-            },
-            {
-              message:
-                "Re-export by name, so a barrel says what the module is. `export *` takes every export at once and launders a restricted name through the barrel.",
-              kinds: ["namespace"],
-            },
-          ],
+          surface: NAMED_EXPORTS_ONLY(),
           children: {
             "domain/": {
               message:
@@ -231,13 +270,13 @@ export default {
               imports: {
                 message:
                   "domain/ is the bottom of the graph. It reaches itself and the runtime, and nothing else in the package.",
-                allow: ["@arch/domain/**"],
+                allow: ["@core/domain/**"],
               },
             },
 
             "ports/": {
               message:
-                "ports/ declares the things this package must touch — a file system, a module resolver, a parser — as interfaces, so the core can be tested without any of them.",
+                "ports/ declares the things a policy must be given — a file system, a module resolver, a parser, a language — as interfaces, so the core can be tested without any of them.",
               layout: "open",
               children: {},
               members: [
@@ -257,13 +296,13 @@ export default {
               imports: {
                 message:
                   "A port is a declaration. It may name the domain types that appear in its signatures, and nothing else.",
-                allow: ["@arch/domain/**", "@arch/ports/**"],
+                allow: ["@core/domain/**", "@core/ports/**"],
               },
             },
 
             "core/": {
               message:
-                "core/ holds the pure evaluators — imports, exports, members, structure, baseline, patterns. Given facts, they return violations; they never read a file.",
+                "core/ holds the pure evaluators — imports, exports, members, surface, structure, graph, coverage, baseline, patterns. Given facts, they return violations; they never read a file.",
               layout: "open",
               children: {},
               members: [NO_FILE_SYSTEM_CALLS],
@@ -271,13 +310,13 @@ export default {
                 message:
                   "core/ evaluates. It reaches the domain, the ports it is given, and its own siblings — never a live adapter, which is what lets every rule here be tested against a fake.",
                 allow: [
-                  "@arch/domain/**",
-                  "@arch/ports/**",
-                  "@arch/core/**",
+                  "@core/domain/**",
+                  "@core/ports/**",
+                  "@core/core/**",
                   // A core test drives the fakes, which is the whole point of
                   // the ports. The pattern names the fakes specifically, so a
                   // test reaching a *live* adapter is still refused.
-                  "@arch/infrastructure/*-fake.ts",
+                  "@core/infrastructure/*-fake.ts",
                 ],
               },
             },
@@ -290,7 +329,7 @@ export default {
               imports: {
                 message:
                   "Lowering is a transformation of the domain types. It reaches the domain and its own siblings; it does not evaluate, and it does not resolve.",
-                allow: ["@arch/domain/**", "@arch/manifest/**"],
+                allow: ["@core/domain/**", "@core/manifest/**"],
               },
             },
 
@@ -304,67 +343,92 @@ export default {
                 message:
                   "load/ composes the pure tiers. It reaches the domain, the ports, the core, the manifest compiler and its own siblings; a live adapter or a language pack reaches it only as an argument.",
                 allow: [
-                  "@arch/domain/**",
-                  "@arch/ports/**",
-                  "@arch/core/**",
-                  "@arch/manifest/**",
-                  "@arch/load/**",
-                  "@arch/infrastructure/*-fake.ts",
+                  "@core/domain/**",
+                  "@core/ports/**",
+                  "@core/core/**",
+                  "@core/manifest/**",
+                  "@core/load/**",
+                  "@core/infrastructure/*-fake.ts",
                 ],
               },
             },
 
             "infrastructure/": {
               message:
-                "infrastructure/ implements the ports twice over: a live adapter for real work and a fake for tests. Nothing else in the package may name what it depends on.",
+                "infrastructure/ holds a fake per port, and the three things the core does on this host without a language: the live file system, the walker, and reading the manifest file. The language-specific adapters live in their packs.",
               layout: "open",
-              children: {
-                "languages/": {
-                  message:
-                    "languages/ holds one pack per language: the extractor and the resolver for it, assembled behind the Language port. The rest of the package speaks the port and never the language.",
-                  layout: "open",
-                  children: {
-                    "{language}/": {
-                      message:
-                        "A language pack is one folder, named for its language, with an index.ts that assembles the pack.",
-                      layout: "open",
-                      children: {},
-                    },
-                  },
-                },
-              },
+              children: {},
               imports: {
                 message:
-                  "An adapter implements a port. It reaches the port it satisfies, the domain types in that signature, and its own siblings.",
-                external: ["unrs-resolver", "typescript"],
-                allow: ["@arch/domain/**", "@arch/ports/**", "@arch/infrastructure/**"],
+                  "An adapter implements a port. It reaches the port it satisfies, the domain types in that signature, and its own siblings — and, in this package, no third-party code beyond the runtime.",
+                allow: ["@core/domain/**", "@core/ports/**", "@core/infrastructure/**"],
               },
             },
 
-            "adapters/": {
-              message:
-                "adapters/ holds the two delivery mechanisms — the oxlint plugin and the CLI. Both answer to the same core, deliberately, so an alpha plugin API is not a single point of failure.",
-              layout: "open",
-              children: { "**/": { layout: "open", children: {} } },
-              imports: {
-                message:
-                  "A delivery adapter composes the package. It is the one tier that may name every other, and the only one that may name the linter or the compiler.",
-                external: ["typescript", "oxlint"],
-                allow: ["@arch/**"],
-              },
-            },
-
-            // The published barrel, and the package's own vitest config beside it.
+            // The two barrels: the public surface, and the fakes.
             "*.ts": {
               imports: {
-                message:
-                  "The barrel re-exports the package's public surface, so it names every tier.",
-                allow: ["@arch/**"],
+                message: "A barrel re-exports the package's surface, so it names every tier.",
+                allow: ["@core/**"],
               },
             },
           },
         },
 
+        "**/": { layout: "open", children: {} },
+      },
+    },
+
+    "~/typescript/": {
+      message:
+        "@goodbones/typescript implements the core's ports for one language: facts through the TypeScript parser, resolution through unrs-resolver, assembled into one Language. It depends on the core and on nothing else in the repository.",
+      layout: "open",
+      imports: {
+        message:
+          "The pack reaches the core's barrels, the compiler, the resolver, and its own siblings. It is the only package that may name TypeScript.",
+        external: [...PACKAGE_FLOOR.external, "typescript", "unrs-resolver"],
+        allow: [...PACKAGE_FLOOR.allow, ...CORE_SURFACE, "@ts/**"],
+      },
+      children: {
+        "src/": { layout: "open", children: {}, surface: NAMED_EXPORTS_ONLY() },
+        "**/": { layout: "open", children: {} },
+      },
+    },
+
+    "~/cli/": {
+      message:
+        "@goodbones/cli is one host: it reads the manifest file, constructs the language packs, and evaluates every family — including the graph family, which only an adapter seeing every file at once can — with no linter in the loop.",
+      layout: "open",
+      imports: {
+        message:
+          "A host composes the package. It reaches the core's barrels and the language pack's, and its own siblings — never the other host.",
+        external: PACKAGE_FLOOR.external,
+        allow: [...PACKAGE_FLOOR.allow, ...CORE_SURFACE, ...TYPESCRIPT_SURFACE, "@cli/**"],
+      },
+      children: {
+        "src/": { layout: "open", children: {}, surface: NAMED_EXPORTS_ONLY() },
+        "**/": { layout: "open", children: {} },
+      },
+    },
+
+    "~/oxlint/": {
+      message:
+        "@goodbones/oxlint is the other host: five oxlint rules over the same manifest, evaluated one file at a time in the editor and in CI. It answers to the core, never to the CLI.",
+      layout: "open",
+      imports: {
+        message:
+          "A host composes the package. It reaches the core's barrels and the language pack's, the linter, and its own siblings — never the other host.",
+        external: [...PACKAGE_FLOOR.external, "oxlint"],
+        allow: [...PACKAGE_FLOOR.allow, ...CORE_SURFACE, ...TYPESCRIPT_SURFACE, "@ox/**"],
+      },
+      children: {
+        // The plugin entry is the one default export: oxlint reads a plugin
+        // as a module's default. Everything else has a name to grep for.
+        "src/": {
+          layout: "open",
+          children: {},
+          surface: NAMED_EXPORTS_ONLY(["@ox/plugin.ts"]),
+        },
         "**/": { layout: "open", children: {} },
       },
     },

@@ -1,0 +1,62 @@
+{
+  "name": "@goodbones/core",
+  "version": "0.1.0-beta.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "Architecture policy as one manifest of your repository, language-agnostic: the manifest schema, the evaluators for imports, exports, members, surface, structure and the import graph, the ports a language pack implements, and the loader that turns a manifest into a policy every rule of which has proven it can fire.",
+  "author": "zacharyweidenbach",
+  "keywords": [
+    "architecture",
+    "lint",
+    "import-boundaries",
+    "hexagonal",
+    "monorepo"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dataquail/oxlint-utils.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://dataquail.github.io/oxlint-utils",
+  "bugs": {
+    "url": "https://github.com/dataquail/oxlint-utils/issues"
+  },
+  "exports": {
+    ".": {
+      "types": "./build/dts/index.d.ts",
+      "default": "./build/esm/index.js"
+    },
+    "./testing": {
+      "types": "./build/dts/testing.d.ts",
+      "default": "./build/esm/testing.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "types": "./build/dts/index.d.ts",
+  "files": [
+    "build/dts",
+    "build/esm",
+    "src",
+    "!src/**/*.test.ts"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json",
+    "check": "tsc -b tsconfig.json",
+    "clean": "rm -rf build .tsbuildinfo",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "effect": "4.0.0-beta.94"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.4"
+  },
+  "nx": {
+    "includedScripts": []
+  }
+}

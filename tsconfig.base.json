@@ -47,12 +47,20 @@
     // declaration output. These are build-time only — nothing here is ever
     // emitted into a specifier.
     //
-    // `oxlint-architecture-rules` itself opts out: its own tsconfigs reset
-    // `paths` to `{}`, because oxlint loads the emitted JavaScript with a bare
-    // `import()` and tsc does not rewrite path aliases on emit.
+    // The packages themselves opt out: their own tsconfigs reset `paths` to
+    // `{}`, because oxlint and Node load the emitted JavaScript with bare
+    // imports and tsc does not rewrite path aliases on emit. A bare
+    // `@goodbones/core` in `packages/cli` resolves through the workspace link
+    // to the built package, ordered by a project reference.
     "paths": {
-      "oxlint-architecture-rules": ["./packages/oxlint-architecture-rules/src/index.ts"],
-      "oxlint-architecture-rules/*": ["./packages/oxlint-architecture-rules/src/*.ts"]
+      "@goodbones/core": ["./packages/core/src/index.ts"],
+      "@goodbones/core/testing": ["./packages/core/src/testing.ts"],
+      "@goodbones/core/*": ["./packages/core/src/*.ts"],
+      "@goodbones/typescript": ["./packages/typescript/src/index.ts"],
+      "@goodbones/typescript/*": ["./packages/typescript/src/*.ts"],
+      "@goodbones/cli/*": ["./packages/cli/src/*.ts"],
+      "@goodbones/oxlint": ["./packages/oxlint/src/plugin.ts"],
+      "@goodbones/oxlint/*": ["./packages/oxlint/src/*.ts"]
     }
   }
 }

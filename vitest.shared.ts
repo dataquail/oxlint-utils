@@ -1,18 +1,21 @@
 import * as path from "node:path";
 import { type ViteUserConfig } from "vitest/config";
 
-// A package's own tests can import it by its published name (`oxlint-architecture-rules`),
-// the same specifier a consumer writes. `TEST_DIST=1` points that specifier at the built
-// output instead of `src`, so the suite can be re-run against what `tsc -b tsconfig.build.json`
-// actually emitted. Note that `nx run-many -t test` does not key its cache on `TEST_DIST`,
-// so going through Nx will replay the `src` run — invoke vitest directly in the package to
-// actually exercise `build/esm`.
-const alias = (name: string) => {
-  const target = process.env.TEST_DIST !== undefined ? "build/esm" : "src";
-  return {
-    [name]: path.join(__dirname, "packages", name, target),
-  };
-};
+// A package's tests import its workspace siblings by their published names
+// (`@goodbones/core`), the same specifiers a consumer writes. In a test run those
+// point at the sibling's `src`, so one edit is visible everywhere without a build.
+// `TEST_DIST=1` points them at the built output instead, so the suite can be
+// re-run against what `tsc -b tsconfig.build.json` actually emitted. Note that
+// `nx run-many -t test` does not key its cache on `TEST_DIST`, so going through
+// Nx will replay the `src` run — invoke vitest directly in a package to actually
+// exercise `build/esm`.
+const entry = (dir: string, file: string) =>
+  path.join(
+    __dirname,
+    "packages",
+    dir,
+    process.env.TEST_DIST !== undefined ? `build/esm/${file}.js` : `src/${file}.ts`,
+  );
 
 const config: ViteUserConfig = {
   esbuild: {
@@ -31,9 +34,11 @@ const config: ViteUserConfig = {
     },
     include: ["src/**/*.test.ts"],
     passWithNoTests: true,
-    alias: {
-      ...alias("oxlint-architecture-rules"),
-    },
+    alias: [
+      { find: /^@goodbones\/core\/testing$/, replacement: entry("core", "testing") },
+      { find: /^@goodbones\/core$/, replacement: entry("core", "index") },
+      { find: /^@goodbones\/typescript$/, replacement: entry("typescript", "index") },
+    ],
   },
 };
 
