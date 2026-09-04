@@ -67,6 +67,10 @@ export const ResolveConfig = Schema.Struct({
   ignoreUnresolved: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 
+// The autofix strategies a rule may name. Each is a rewrite in one language's
+// module syntax, so a language pack lists the ones it implements.
+export const ExportFix = Schema.Literals(["subpath-namespace-import"]);
+
 // Which binding form an import site used. A rule that fences off a factory
 // function cares about `named`; one steering people to namespace subpath imports
 // cares that `named` was used at all.
@@ -102,18 +106,22 @@ export const ExportRule = Schema.Struct({
   // Defaults to ["named"] — the discriminating form for every rule of this shape
   // written so far.
   kinds: Schema.optionalKey(Schema.Array(BindingKind)),
-  // A named autofix strategy. `subpath-namespace-import` rewrites
-  // `import { A, B as C } from "pkg"` into `import * as A from "pkg/A"` /
-  // `import * as C from "pkg/B"`, for packages that publish each module as its own
-  // subpath. A rule carrying a fix reports once per declaration rather than once
-  // per symbol, because the fix rewrites the whole declaration.
-  fix: Schema.optionalKey(Schema.Literals(["subpath-namespace-import"])),
+  // A named autofix strategy, which a language pack may or may not implement:
+  // the loader refuses a rule naming one no loaded language does.
+  // `subpath-namespace-import` is an ES-module rewrite — `import { A, B as C }
+  // from "pkg"` into `import * as A from "pkg/A"` / `import * as C from "pkg/B"`,
+  // for packages that publish each module as its own subpath. A rule carrying a
+  // fix reports once per declaration rather than once per symbol, because the
+  // fix rewrites the whole declaration.
+  fix: Schema.optionalKey(ExportFix),
 });
 
 // What a name was declared as. For an export site, the declaration that
 // introduced it; for a member site, the declaration it is written in.
 // `expression` is `export default <expr>`; `other` covers a namespace, an
-// `export =`, and a re-export, whose declaration is somewhere else.
+// `export =`, and a re-export, whose declaration is somewhere else. A second
+// language will want `struct`, `record`, `constant`, `module` here; they are
+// added with the pack that reads them, not before.
 export const DeclarationKind = Schema.Literals([
   "function",
   "class",
@@ -297,8 +305,9 @@ const StructureParity = Schema.Struct({
   file: PatternList,
   fileNot: Schema.optionalKey(PatternList),
   // Paths that must exist, relative to the file's own folder. `{base}` is the
-  // filename minus its final extension, so `{base}.test.ts` beside
-  // `create-todo.handler.ts` means `create-todo.handler.test.ts`.
+  // filename minus its final extension — `create-todo.handler` for
+  // `create-todo.handler.ts`, `handler` for `handler.go` — so `{base}.test.ts`
+  // or `{base}_test.go` names the sibling test in either language.
   requires: Schema.Array(Schema.String),
 });
 
@@ -335,6 +344,7 @@ export type ImportProbeTarget = (typeof ImportProbeTarget)["Type"];
 export type ExportRule = (typeof ExportRule)["Type"];
 export type ExportProbe = (typeof ExportProbe)["Type"];
 export type BindingKind = (typeof BindingKind)["Type"];
+export type ExportFix = (typeof ExportFix)["Type"];
 export type MemberRule = (typeof MemberRule)["Type"];
 export type MemberProbe = (typeof MemberProbe)["Type"];
 export type MemberSubject = (typeof MemberSubject)["Type"];

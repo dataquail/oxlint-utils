@@ -307,8 +307,8 @@ export const lowerManifest = (
     `packages/zzprobe/${stem}${extensionFor(likeFolder)}`;
 
   // The folder layout rule must be proven with a basename the folder rejects.
-  // What that is depends on what the folder admits: `zzprobe-stray.ts` is a
-  // file a `*.ts` folder is happy with.
+  // What that is depends on what the folder admits: a stray with the language's
+  // own extension is a file a folder admitting every such file is happy with.
   const strayBasenameFor = (
     admitted: ReadonlyArray<string>,
     extension: string,
@@ -946,7 +946,7 @@ export const lowerManifest = (
   const asGraphPatterns = (globs: string | ReadonlyArray<string> | undefined) =>
     globs === undefined ? undefined : globsOf(globs).map(asGraphPattern);
   // A synthetic file inside a graph scope. A glob whose last segment names a
-  // file shape (`src/**/*.ts`) is filled in place and keeps its extension; a
+  // file shape (`src/**/*.<ext>`) is filled in place and keeps its extension; a
   // folder glob (`src/**`) gets a file of its language's added beneath it.
   const probeFileIn = (globs: string | ReadonlyArray<string>, stem: string): string => {
     const glob = expandAliases(globsOf(globs)[0] ?? "", aliases);

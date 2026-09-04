@@ -9,6 +9,7 @@ export {
 } from "./core/imports.js";
 export {
   type DeclarationKind,
+  type ExportFix,
   type GraphConfig,
   type ImportRule,
   type ResolveConfig,

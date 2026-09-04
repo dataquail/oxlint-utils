@@ -13,5 +13,6 @@ export const typescriptLanguage = (): Language => ({
   // policy is written about one.
   ignoredFiles: [/\.d\.[cm]?ts$/],
   extractor: makeFactExtractorLive(),
+  fixes: ["subpath-namespace-import"],
   makeResolver: (repoRoot, scope) => makeModuleResolverLive(repoRoot, { scopes: [scope] }),
 });

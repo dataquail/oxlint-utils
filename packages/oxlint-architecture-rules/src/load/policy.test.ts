@@ -17,6 +17,7 @@ const go = (facts: Parameters<typeof makeFactExtractorFake>[0] = {}): Language =
   extensions: [".go"],
   ignoredFiles: [/_test\.go$/],
   extractor: makeFactExtractorFake(facts),
+  fixes: [],
   makeResolver: () =>
     Result.succeed(makeModuleResolverFake({ "svc/domain/repo": "svc/domain/repo.go" })),
 });
@@ -105,6 +106,29 @@ describe("loadPolicy with a language that is not TypeScript", () => {
     expect(Result.isFailure(outcome) && outcome.failure.message).toMatch(
       /svc\/domain\/members-0 — probe parsed by go, selected by the scope "\^svc\/"/,
     );
+  });
+
+  // A fix is a rewrite in one language's syntax; a language that does not
+  // carry it cannot honour a rule that names it.
+  it("refuses an exports rule naming a fix no loaded language implements", () => {
+    const withFix = {
+      ...manifest(),
+      exports: [
+        {
+          name: "subpaths",
+          message: "…",
+          module: "svc/domain/**",
+          fix: "subpath-namespace-import",
+        },
+      ],
+    };
+    const outcome = load(withFix, [go()]);
+    expect(Result.isFailure(outcome) && outcome.failure.message).toMatch(
+      /subpaths \(subpath-namespace-import\)/,
+    );
+    expect(
+      Result.isSuccess(load(withFix, [{ ...go(), fixes: ["subpath-namespace-import"] }])),
+    ).toBe(true);
   });
 
   it("refuses a scope naming a language no loaded pack answers to", () => {

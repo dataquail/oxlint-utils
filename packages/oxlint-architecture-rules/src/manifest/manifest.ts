@@ -47,7 +47,7 @@ const Imports = Schema.Struct({
 });
 
 // Inbound: who may reach this part of the tree. Four of the rules governing
-// `domain/` are of this shape — "*.root-ops.ts is private to command handlers" —
+// `domain/` are of this shape — "a root-ops file is private to command handlers" —
 // and stating them here is what stops them being a distant rule with a growing
 // exclusion list on its `from` side.
 const ImportedBy = Schema.Struct({

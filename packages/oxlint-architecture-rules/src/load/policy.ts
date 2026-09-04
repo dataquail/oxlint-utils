@@ -246,6 +246,24 @@ export const loadPolicy = (
   const exportRules = compileExportRules(rules.exports);
   if (Result.isFailure(exportRules)) return Result.fail(exportRules.failure);
 
+  // A fix is a rewrite in one language's module syntax. A rule naming one that
+  // no loaded language implements would report as fixable and never fix.
+  const unfixable = exportRules.success.filter((rule) => {
+    const fix = rule.fix;
+    return fix !== null && !languages.some((one) => one.fixes.includes(fix));
+  });
+  if (unfixable.length > 0) {
+    return Result.fail(
+      new ConfigInvalid({
+        configPath,
+        detail:
+          `these exports rules name a fix no loaded language implements: ` +
+          unfixable.map((rule) => `${rule.name} (${rule.fix ?? ""})`).join(", ") +
+          `. Drop the fix, or load a language pack that carries it.`,
+      }),
+    );
+  }
+
   const memberRules = compileMemberRules(rules.members);
   if (Result.isFailure(memberRules)) return Result.fail(memberRules.failure);
 

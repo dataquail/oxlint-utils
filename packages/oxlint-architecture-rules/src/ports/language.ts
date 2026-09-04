@@ -1,6 +1,6 @@
 import type * as Result from "effect/Result";
 
-import type { ResolveScope } from "../domain/architecture-config.js";
+import type { ExportFix, ResolveScope } from "../domain/architecture-config.js";
 import type { ScopeInvalid } from "../domain/architecture-error.js";
 import type { FactExtractor } from "./fact-extractor.js";
 import type { ModuleResolver } from "./module-resolver.js";
@@ -24,6 +24,10 @@ export type Language = {
   // Reads the facts out of one source text. The CLI reads every file through
   // it, and a probe carrying a `source` snippet is parsed by it at load.
   readonly extractor: FactExtractor;
+  // The autofix strategies an `exports` rule may name that this language can
+  // carry out. A rewrite is written in one module syntax; a rule naming one no
+  // loaded language implements is refused at load.
+  readonly fixes: ReadonlyArray<ExportFix>;
   // A resolver for the files one scope covers. Built once per scope per run;
   // resolution is the expensive half of linting an architecture. The scope's
   // `options` are this language's to read, and anything it does not
