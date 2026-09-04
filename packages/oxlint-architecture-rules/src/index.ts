@@ -30,6 +30,7 @@ export {
 } from "./domain/violation.js";
 export { makeFactExtractorFake } from "./infrastructure/fact-extractor-fake.js";
 export { factsOfText, makeFactExtractorLive } from "./infrastructure/fact-extractor-live.js";
+export { typescriptLanguage } from "./infrastructure/languages/typescript/index.js";
 export { makeModuleResolverFake } from "./infrastructure/module-resolver-fake.js";
 export { makeModuleResolverLive } from "./infrastructure/module-resolver-live.js";
 export { type LoweredRules, lowerManifest } from "./manifest/compile.js";
@@ -39,4 +40,5 @@ export {
   Manifest as ManifestSchema,
 } from "./manifest/manifest.js";
 export { type FactExtractor } from "./ports/fact-extractor.js";
+export { type Language } from "./ports/language.js";
 export { type ModuleResolver, type ResolvedTarget } from "./ports/module-resolver.js";
