@@ -10,7 +10,10 @@ written at that part of the tree.
 ```js
 /** @type {import("oxlint-architecture-rules").Manifest} */
 export default {
-  resolve: { scopes: [{ files: "", tsconfig: "tsconfig.json" }], unresolved: "error" },
+  resolve: {
+    scopes: [{ files: "", language: "typescript", options: { tsconfig: "tsconfig.json" } }],
+    unresolved: "error",
+  },
   baseline: ".architecture-baseline.json",
   aliases: { "@": "packages/server/src", "~": "packages" },
   deny: [/* prohibitions that hold everywhere */],

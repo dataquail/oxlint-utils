@@ -67,6 +67,8 @@ export type LoadedPolicy = {
   readonly baseline: BaselineFilter;
   readonly resolver: ModuleResolver;
   readonly ignoreUnresolved: ReadonlyArray<RegExp>;
+  // Deprecation notices from reading the manifest. The host prints them once.
+  readonly notices: ReadonlyArray<string>;
 };
 
 const readBaselineAt = (repoRoot: string, at: string) => {
@@ -99,7 +101,7 @@ export const loadPolicy = async (
 
   const decoded = decodeManifest(configPath, exported);
   if (Result.isFailure(decoded)) throw decoded.failure;
-  const config = decoded.success;
+  const config = decoded.success.manifest;
 
   // The manifest is the authoring surface; these flat rules are the machine's.
   const rules = lowerManifest(config);
@@ -171,6 +173,14 @@ export const loadPolicy = async (
     });
   }
 
+  // A scope the language cannot build a resolver from — options it does not
+  // understand, or a language nothing here answers to — is a policy whose
+  // rules would be evaluated against the wrong files, and is refused.
+  const resolver = makeModuleResolverLive(repoRoot, config.resolve);
+  if (Result.isFailure(resolver)) {
+    throw new ConfigInvalid({ configPath, detail: resolver.failure.message });
+  }
+
   return {
     repoRoot,
     config,
@@ -185,9 +195,10 @@ export const loadPolicy = async (
     baseline: makeBaselineFilter(
       config.baseline === undefined ? EMPTY_BASELINE : readBaselineAt(repoRoot, config.baseline),
     ),
-    resolver: makeModuleResolverLive(repoRoot, config.resolve),
+    resolver: resolver.success,
     ignoreUnresolved: (config.resolve.ignoreUnresolved ?? []).map(
       (pattern: string) => new RegExp(pattern),
     ),
+    notices: decoded.success.notices,
   };
 };

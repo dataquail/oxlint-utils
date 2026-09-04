@@ -31,14 +31,27 @@ describe("typescriptLanguage", () => {
   it("builds a resolver for one scope through that scope's tsconfig", () => {
     const resolver = language.makeResolver(repoRoot, {
       files: "^packages/",
-      tsconfig: "tsconfig.resolve.json",
+      language: "typescript",
+      options: { tsconfig: "tsconfig.resolve.json" },
     });
-    const resolved = resolver.resolve(
+    if (Result.isFailure(resolver)) throw resolver.failure;
+    const resolved = resolver.success.resolve(
       "packages/oxlint-architecture-rules/src/adapters/oxlint/plugin.ts",
       "./config-loader.js",
     );
     expect(Result.isSuccess(resolved) && resolved.success.path).toBe(
       "packages/oxlint-architecture-rules/src/adapters/oxlint/config-loader.ts",
     );
+  });
+
+  // The options are the pack's to validate. A scope it cannot read is refused
+  // at load, never resolved on defaults.
+  it("refuses a scope whose options it does not understand", () => {
+    const resolver = language.makeResolver(repoRoot, {
+      files: "^packages/",
+      language: "typescript",
+      options: { tsconfig: "tsconfig.resolve.json", conditionNmaes: ["import"] },
+    });
+    expect(Result.isFailure(resolver) && resolver.failure.message).toMatch(/conditionNmaes/);
   });
 });

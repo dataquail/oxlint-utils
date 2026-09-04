@@ -47,18 +47,20 @@ export const ImportRule = Schema.Struct({
   dependencyKind: Schema.optionalKey(Schema.Literals(["external", "local", "builtin"])),
 });
 
-// Resolution is tsconfig-driven, and this monorepo needs two: the web/components
-// pass resolves `@/*` and `@org/components/*` that the server pass does not.
+// Which language pack resolves and parses the files a scope covers. A monorepo
+// needs several scopes even in one language — the web pass resolves `@/*` the
+// server pass does not — and a second language is one more scope. `options`
+// belong to the language: the policy carries them opaquely and the pack
+// validates them at load, so nothing here knows what a tsconfig is.
 const ResolveScope = Schema.Struct({
+  // A regular-expression source matched against the importing file's path.
   files: Schema.String,
-  tsconfig: Schema.String,
+  language: Schema.String,
+  options: Schema.optionalKey(Schema.Unknown),
 });
 
 export const ResolveConfig = Schema.Struct({
   scopes: Schema.Array(ResolveScope),
-  extensions: Schema.optionalKey(Schema.Array(Schema.String)),
-  conditionNames: Schema.optionalKey(Schema.Array(Schema.String)),
-  mainFields: Schema.optionalKey(Schema.Array(Schema.String)),
   // An edge nobody can resolve is an edge no rule can police, which is the
   // silent-vacuity failure this whole package exists to prevent. Default loud.
   unresolved: Schema.optionalKey(Schema.Literals(["error", "off"])),

@@ -46,7 +46,7 @@ that matches nothing.
 /** @type {import("oxlint-architecture-rules").Manifest} */
 export default {
   resolve: {
-    scopes: [{ files: "", tsconfig: "tsconfig.json" }],
+    scopes: [{ files: "", language: "typescript", options: { tsconfig: "tsconfig.json" } }],
     unresolved: "error",
   },
   aliases: {

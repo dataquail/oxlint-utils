@@ -21,7 +21,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../
 
 const config = {
   resolve: {
-    scopes: [{ files: "", tsconfig: "tsconfig.resolve.json" }],
+    scopes: [{ files: "", language: "typescript", options: { tsconfig: "tsconfig.resolve.json" } }],
     unresolved: "error" as const,
   },
   imports: [
@@ -58,6 +58,7 @@ const makePolicy = (): LoadedPolicy => {
       "@org/contracts/Policy": "packages/contracts/src/Policy.ts",
     }),
     ignoreUnresolved: [],
+    notices: [],
     baseline: makeBaselineFilter(EMPTY_BASELINE),
   };
 };

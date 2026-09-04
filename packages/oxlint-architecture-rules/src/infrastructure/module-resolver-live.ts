@@ -3,9 +3,13 @@ import * as path from "node:path";
 import * as Result from "effect/Result";
 import { ResolverFactory } from "unrs-resolver";
 
-import type { ResolveConfig } from "../domain/architecture-config.js";
-import { ImportUnresolved } from "../domain/architecture-error.js";
+import type { ResolveConfig, ResolveScope } from "../domain/architecture-config.js";
+import { ImportUnresolved, ScopeInvalid } from "../domain/architecture-error.js";
 import type { ModuleResolver, ResolvedTarget } from "../ports/module-resolver.js";
+import {
+  decodeTypescriptScopeOptions,
+  type TypescriptScopeOptions,
+} from "./languages/typescript/options.js";
 import { npmPackageOf } from "./npm-package.js";
 
 // `.js` in a NodeNext import specifier points at a `.ts` on disk. Without this,
@@ -20,6 +24,8 @@ const EXTENSION_ALIAS = {
 const DEFAULT_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".json"];
 const DEFAULT_CONDITION_NAMES = ["import", "require", "node", "default"];
 const DEFAULT_MAIN_FIELDS = ["main", "types"];
+
+export const TYPESCRIPT = "typescript";
 
 const toPosix = (value: string): string => value.replaceAll(path.sep, "/");
 
@@ -38,18 +44,44 @@ type Scope = {
   readonly factory: ResolverFactory;
 };
 
-export const makeModuleResolverLive = (repoRoot: string, config: ResolveConfig): ModuleResolver => {
-  const scopes: ReadonlyArray<Scope> = config.scopes.map((scope) => ({
+const factoryOf = (repoRoot: string, options: TypescriptScopeOptions): ResolverFactory =>
+  new ResolverFactory({
+    tsconfig: { configFile: path.resolve(repoRoot, options.tsconfig) },
+    extensions: [...(options.extensions ?? DEFAULT_EXTENSIONS)],
+    extensionAlias: EXTENSION_ALIAS,
+    conditionNames: [...(options.conditionNames ?? DEFAULT_CONDITION_NAMES)],
+    mainFields: [...(options.mainFields ?? DEFAULT_MAIN_FIELDS)],
+    builtinModules: true,
+  });
+
+// Every scope here is TypeScript's: this resolver is the one the TypeScript pack
+// hands out, and a scope naming another language is one it cannot serve.
+const scopeOf = (repoRoot: string, scope: ResolveScope): Result.Result<Scope, ScopeInvalid> => {
+  if (scope.language !== TYPESCRIPT) {
+    return Result.fail(
+      new ScopeInvalid({
+        files: scope.files,
+        language: scope.language,
+        detail: `the TypeScript resolver cannot serve a "${scope.language}" scope`,
+      }),
+    );
+  }
+  return Result.map(decodeTypescriptScopeOptions(scope), (options) => ({
     matches: new RegExp(scope.files),
-    factory: new ResolverFactory({
-      tsconfig: { configFile: path.resolve(repoRoot, scope.tsconfig) },
-      extensions: [...(config.extensions ?? DEFAULT_EXTENSIONS)],
-      extensionAlias: EXTENSION_ALIAS,
-      conditionNames: [...(config.conditionNames ?? DEFAULT_CONDITION_NAMES)],
-      mainFields: [...(config.mainFields ?? DEFAULT_MAIN_FIELDS)],
-      builtinModules: true,
-    }),
+    factory: factoryOf(repoRoot, options),
   }));
+};
+
+export const makeModuleResolverLive = (
+  repoRoot: string,
+  config: ResolveConfig,
+): Result.Result<ModuleResolver, ScopeInvalid> => {
+  const scopes: Array<Scope> = [];
+  for (const entry of config.scopes) {
+    const scope = scopeOf(repoRoot, entry);
+    if (Result.isFailure(scope)) return Result.fail(scope.failure);
+    scopes.push(scope.success);
+  }
 
   const cache = new Map<string, Result.Result<ResolvedTarget, ImportUnresolved>>();
 
@@ -80,7 +112,7 @@ export const makeModuleResolverLive = (repoRoot: string, config: ResolveConfig):
     return Result.succeed(toResolvedTarget(repoRoot, resolvedPath));
   };
 
-  return {
+  return Result.succeed({
     resolve: (fromFile, specifier) => {
       const scope = scopes.find((candidate) => candidate.matches.test(fromFile));
       if (scope === undefined) {
@@ -102,5 +134,5 @@ export const makeModuleResolverLive = (repoRoot: string, config: ResolveConfig):
       cache.set(key, outcome);
       return outcome;
     },
-  };
+  });
 };

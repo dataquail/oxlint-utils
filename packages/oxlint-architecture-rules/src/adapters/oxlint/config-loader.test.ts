@@ -2,6 +2,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import * as Result from "effect/Result";
 import { afterAll, describe, expect, it } from "vitest";
 
 // Through the barrel on purpose: this is the package's public surface, and a
@@ -31,7 +32,7 @@ const writeConfig = (source: string): string => {
   return path.join(scratch, name);
 };
 
-const RESOLVE = `resolve: { scopes: [{ files: "", tsconfig: "tsconfig.resolve.json" }] }`;
+const RESOLVE = `resolve: { scopes: [{ files: "", language: "typescript", options: { tsconfig: "tsconfig.resolve.json" } }] }`;
 
 // A one-node manifest: a domain folder that may reach only itself.
 const TREE = `tree: {
@@ -56,6 +57,44 @@ describe("loadPolicy", () => {
       "packages-server-src-modules-module-domain/imports",
     ]);
     expect(policy.resolver.resolve("packages/server/src/server.ts", "node:path")).toBeDefined();
+    expect(policy.notices).toEqual([]);
+  });
+
+  // The shape every manifest had before scopes named their language. It loads
+  // for the rest of the beta, and says once that it is on its way out.
+  it("reads a scope written as { files, tsconfig } as a TypeScript scope, with a notice", async () => {
+    const legacy = `resolve: { scopes: [{ files: "", tsconfig: "tsconfig.resolve.json" }], mainFields: ["main"] }`;
+    const policy = await loadPolicy(
+      repoRoot,
+      writeConfig(`export default { ${legacy}, ${TREE} };`),
+    );
+    expect(policy.config.resolve.scopes).toEqual([
+      {
+        files: "",
+        language: "typescript",
+        options: { tsconfig: "tsconfig.resolve.json", mainFields: ["main"] },
+      },
+    ]);
+    expect(policy.notices).toHaveLength(2);
+    expect(policy.notices[0]).toMatch(/resolve\.mainFields/);
+    expect(policy.notices[1]).toMatch(/resolve\.scopes\[0\]/);
+    expect(
+      Result.isSuccess(policy.resolver.resolve("packages/server/src/server.ts", "node:path")),
+    ).toBe(true);
+  });
+
+  it("refuses a scope whose language nothing answers to, naming the scope", async () => {
+    const go = `resolve: { scopes: [{ files: "", language: "go" }] }`;
+    await expect(
+      loadPolicy(repoRoot, writeConfig(`export default { ${go}, ${TREE} };`)),
+    ).rejects.toThrow(/resolve scope "" \(go\)/);
+  });
+
+  it("refuses a TypeScript scope whose options it does not understand", async () => {
+    const typo = `resolve: { scopes: [{ files: "", language: "typescript", options: { tsconfig: "tsconfig.resolve.json", extension: [".ts"] } }] }`;
+    await expect(
+      loadPolicy(repoRoot, writeConfig(`export default { ${typo}, ${TREE} };`)),
+    ).rejects.toThrow(/extension/);
   });
 
   it("rejects a config whose shape does not decode", async () => {
@@ -262,7 +301,7 @@ describe("uncompilable patterns in the other three families", () => {
   // default is the CommonJS-ish shape a `.cjs` policy would produce.
   it("accepts a manifest that is the module itself rather than its default export", async () => {
     const at =
-      writeConfig(`export const resolve = { scopes: [{ files: "", tsconfig: "tsconfig.resolve.json" }] };
+      writeConfig(`export const resolve = { scopes: [{ files: "", language: "typescript", options: { tsconfig: "tsconfig.resolve.json" } }] };
 export const tree = { "packages/server/src/modules/{module}/domain/": { message: "m", imports: { message: "m", allow: ["packages/server/src/modules/{module}/domain/**"] }, children: { "*.root.ts": {} } } };`);
     const policy = await loadPolicy(repoRoot, at);
     expect(policy.importRules.length).toBeGreaterThan(0);

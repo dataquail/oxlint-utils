@@ -16,6 +16,12 @@ const policy = await loadPolicy(
   process.env.ARCHITECTURE_CONFIG ?? DEFAULT_CONFIG_FILENAME,
 );
 
+// A manifest written in a shape on its way out still loads; it says so once,
+// here, rather than on every file.
+for (const notice of policy.notices) {
+  process.stderr.write(`[architecture] deprecated: ${notice}\n`);
+}
+
 export const rules: {
   readonly imports: OxlintRule;
   readonly exports: OxlintRule;

@@ -24,7 +24,9 @@ const CQRS_BARREL =
 const EFFECT_BARREL = "node_modules/.pnpm/effect@4.0.0-beta.94/node_modules/effect/dist/index.js";
 
 const config = {
-  resolve: { scopes: [{ files: "", tsconfig: "tsconfig.resolve.json" }] },
+  resolve: {
+    scopes: [{ files: "", language: "typescript", options: { tsconfig: "tsconfig.resolve.json" } }],
+  },
   exports: [
     {
       name: "bus-factories-at-composition-roots",
@@ -70,6 +72,7 @@ const policy = (): LoadedPolicy => {
       "effect/Effect": "node_modules/.pnpm/effect@4.0.0-beta.94/node_modules/effect/dist/Effect.js",
     }),
     ignoreUnresolved: [],
+    notices: [],
     baseline: makeBaselineFilter(EMPTY_BASELINE),
   };
 };

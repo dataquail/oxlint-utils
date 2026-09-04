@@ -4,7 +4,9 @@ import { lowerManifest } from "./compile.js";
 import type { Manifest } from "./manifest.js";
 
 const base = (tree: Manifest["tree"]): Manifest => ({
-  resolve: { scopes: [{ files: "", tsconfig: "tsconfig.json" }] },
+  resolve: {
+    scopes: [{ files: "", language: "typescript", options: { tsconfig: "tsconfig.json" } }],
+  },
   aliases: { "@": "pkg/src" },
   tree,
 });

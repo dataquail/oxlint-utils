@@ -20,7 +20,9 @@ RuleTester.it = it;
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../..");
 
 const config = {
-  resolve: { scopes: [{ files: "", tsconfig: "tsconfig.resolve.json" }] },
+  resolve: {
+    scopes: [{ files: "", language: "typescript", options: { tsconfig: "tsconfig.resolve.json" } }],
+  },
   surface: [
     {
       name: "no-default-exports",
@@ -83,6 +85,7 @@ const policy = (): LoadedPolicy => {
     fileSystem: makeFileSystemFake([]),
     resolver: makeModuleResolverFake({}),
     ignoreUnresolved: [],
+    notices: [],
     baseline: makeBaselineFilter(EMPTY_BASELINE),
   };
 };

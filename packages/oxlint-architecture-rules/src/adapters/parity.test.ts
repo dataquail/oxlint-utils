@@ -169,7 +169,9 @@ useState(0);
 // facts. `{name}` puts the subject in the message, which is what makes two
 // diagnostics comparable.
 const config = {
-  resolve: { scopes: [{ files: "", tsconfig: "tsconfig.resolve.json" }] },
+  resolve: {
+    scopes: [{ files: "", language: "typescript", options: { tsconfig: "tsconfig.resolve.json" } }],
+  },
   imports: [
     {
       name: "every-edge",
@@ -246,6 +248,7 @@ const policy: LoadedPolicy = {
   fileSystem: makeFileSystemFake([]),
   resolver,
   ignoreUnresolved: [],
+  notices: [],
   baseline: makeBaselineFilter(EMPTY_BASELINE),
 };
 

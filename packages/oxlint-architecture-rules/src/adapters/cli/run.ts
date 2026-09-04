@@ -442,6 +442,9 @@ export const run = (
       try: () => loadPolicy(repoRoot),
       catch: (cause) => fail(String(cause)),
     });
+    yield* Effect.sync(() => {
+      for (const notice of policy.notices) process.stderr.write(`deprecated: ${notice}\n`);
+    });
 
     const roots = rest.length > 0 ? rest : ["packages"];
 

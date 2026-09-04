@@ -52,7 +52,13 @@ export default {
     // Only `packages/` is policed. The docs site is Astro, whose `astro:*`
     // virtual modules resolve to nothing on disk, and a scope that cannot
     // resolve its own imports would report noise rather than architecture.
-    scopes: [{ files: "^packages/", tsconfig: "tsconfig.resolve.json" }],
+    scopes: [
+      {
+        files: "^packages/",
+        language: "typescript",
+        options: { tsconfig: "tsconfig.resolve.json" },
+      },
+    ],
     // An import nobody can resolve is an import no rule can police. Loud by
     // default; anything listed here needs a reason next to it.
     unresolved: "error",

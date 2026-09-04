@@ -20,7 +20,9 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../
 const MOD = "^packages/server/src/modules/[^/]+";
 
 const config = {
-  resolve: { scopes: [{ files: "", tsconfig: "tsconfig.resolve.json" }] },
+  resolve: {
+    scopes: [{ files: "", language: "typescript", options: { tsconfig: "tsconfig.resolve.json" } }],
+  },
   structure: {
     roots: [
       {
@@ -69,6 +71,7 @@ const policy = (present: ReadonlyArray<string>): LoadedPolicy => {
     fileSystem: makeFileSystemFake(present),
     resolver: makeModuleResolverFake({}),
     ignoreUnresolved: [],
+    notices: [],
     baseline: makeBaselineFilter(EMPTY_BASELINE),
   };
 };

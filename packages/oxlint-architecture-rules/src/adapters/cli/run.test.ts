@@ -25,7 +25,7 @@ const repoRoot = path.resolve(here, "../../../.tmp-cli-tests");
 // — walker, parser, resolver, all four evaluators — without asserting anything
 // about this repository's own code.
 const MANIFEST = `export default {
-  resolve: { scopes: [{ files: "", tsconfig: "tsconfig.json" }], unresolved: "off" },
+  resolve: { scopes: [{ files: "", language: "typescript", options: { tsconfig: "tsconfig.json" } }], unresolved: "off" },
   graph: {
     cycles: [{ name: "no-cycles", message: "These files import each other.", within: "lib/**" }],
   },

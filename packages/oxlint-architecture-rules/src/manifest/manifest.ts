@@ -285,11 +285,77 @@ export const globsOf = (globs: string | ReadonlyArray<string>): ReadonlyArray<st
 
 const decode = Schema.decodeUnknownResult(Manifest);
 
+export type DecodedManifest = {
+  readonly manifest: Manifest;
+  // Things the manifest said in a form that still loads but is on its way out.
+  // The host prints them; nothing else acts on them.
+  readonly notices: ReadonlyArray<string>;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const isList = (value: unknown): value is ReadonlyArray<unknown> => Array.isArray(value);
+
+// The three resolver options that used to sit on `resolve` itself, when every
+// scope was a TypeScript scope and there was nowhere else to put them.
+const LEGACY_RESOLVER_OPTIONS = ["extensions", "conditionNames", "mainFields"] as const;
+
+// Until this beta ends, a scope written as `{ files, tsconfig }` is read as a
+// TypeScript scope with `options: { tsconfig }`, and resolver options on
+// `resolve` itself are folded into every TypeScript scope. Rewritten here, on
+// the raw input, so the schema itself never has to know the old shape.
+const normalizeLegacyResolve = (
+  input: unknown,
+): { readonly input: unknown; readonly notices: ReadonlyArray<string> } => {
+  if (!isRecord(input) || !isRecord(input.resolve) || !isList(input.resolve.scopes)) {
+    return { input, notices: [] };
+  }
+  const resolve = input.resolve;
+  const rawScopes = input.resolve.scopes;
+  const notices: Array<string> = [];
+
+  const hoisted = Object.fromEntries(
+    LEGACY_RESOLVER_OPTIONS.flatMap((key) => (key in resolve ? [[key, resolve[key]]] : [])),
+  );
+  if (Object.keys(hoisted).length > 0) {
+    notices.push(
+      `resolve.${Object.keys(hoisted).join(", resolve.")} on \`resolve\` itself is deprecated: ` +
+        `these are TypeScript resolver options, and belong in a TypeScript scope's \`options\`.`,
+    );
+  }
+
+  const scopes = rawScopes.map((scope, index) => {
+    if (!isRecord(scope)) return scope;
+    const { tsconfig, ...rest } = scope;
+    if (tsconfig === undefined || "language" in scope) {
+      return scope.language === "typescript" &&
+        Object.keys(hoisted).length > 0 &&
+        isRecord(scope.options)
+        ? { ...scope, options: { ...hoisted, ...scope.options } }
+        : scope;
+    }
+    notices.push(
+      `resolve.scopes[${String(index)}] names a \`tsconfig\` with no \`language\`. That shape is ` +
+        `deprecated: write { files, language: "typescript", options: { tsconfig } }.`,
+    );
+    return { ...rest, language: "typescript", options: { ...hoisted, tsconfig } };
+  });
+
+  const { conditionNames: _c, extensions: _e, mainFields: _m, ...restOfResolve } = resolve;
+  return { input: { ...input, resolve: { ...restOfResolve, scopes } }, notices };
+};
+
 export const decodeManifest = (
   configPath: string,
   input: unknown,
-): Result.Result<Manifest, ConfigInvalid> =>
-  Result.mapError(
-    decode(input),
-    (issue) => new ConfigInvalid({ configPath, detail: String(issue) }),
+): Result.Result<DecodedManifest, ConfigInvalid> => {
+  const normalized = normalizeLegacyResolve(input);
+  return Result.map(
+    Result.mapError(
+      decode(normalized.input),
+      (issue) => new ConfigInvalid({ configPath, detail: String(issue) }),
+    ),
+    (manifest) => ({ manifest, notices: normalized.notices }),
   );
+};

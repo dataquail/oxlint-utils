@@ -1,4 +1,7 @@
+import type * as Result from "effect/Result";
+
 import type { ResolveScope } from "../domain/architecture-config.js";
+import type { ScopeInvalid } from "../domain/architecture-error.js";
 import type { FactExtractor } from "./fact-extractor.js";
 import type { ModuleResolver } from "./module-resolver.js";
 
@@ -22,6 +25,11 @@ export type Language = {
   // it, and a probe carrying a `source` snippet is parsed by it at load.
   readonly extractor: FactExtractor;
   // A resolver for the files one scope covers. Built once per scope per run;
-  // resolution is the expensive half of linting an architecture.
-  readonly makeResolver: (repoRoot: string, scope: ResolveScope) => ModuleResolver;
+  // resolution is the expensive half of linting an architecture. The scope's
+  // `options` are this language's to read, and anything it does not
+  // understand is refused here, at load — never resolved on defaults.
+  readonly makeResolver: (
+    repoRoot: string,
+    scope: ResolveScope,
+  ) => Result.Result<ModuleResolver, ScopeInvalid>;
 };
