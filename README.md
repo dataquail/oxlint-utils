@@ -1,24 +1,33 @@
 # Oxlint Utils
 
-Oxlint plugins and tooling, published as independent packages.
+Architecture policy as one manifest of your repository — import boundaries over resolved module
+paths, restricted export sites, what a file may export, folder taxonomy with sibling parity,
+declared-member allowlists, and cycles, orphans and transitive reach over the whole import graph —
+enforced by an oxlint plugin in the editor and a CLI in CI. Published as independent packages:
 
-| Package                                                           | What it does                                                                                                                                                                                                                                                                                                    |
-| ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`oxlint-architecture-rules`](packages/oxlint-architecture-rules) | Architecture policy as one manifest of your repository: import boundaries over resolved module paths, restricted export sites, what a file may export, folder taxonomy with sibling parity, declared-member allowlists — and, through its CLI, cycles, orphans and transitive reach over the whole import graph |
+| Package                                        | What it does                                                                                                        |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| [`@goodbones/core`](packages/core)             | The manifest schema, the evaluators, the ports a language pack implements, and the loader. Names no language.       |
+| [`@goodbones/typescript`](packages/typescript) | The TypeScript language pack: facts through the TypeScript parser, resolution through `unrs-resolver`.              |
+| [`@goodbones/cli`](packages/cli)               | The `architecture` CLI: `check`, `baseline`, `coverage`, `explain`, `facts`, and the graph family.                  |
+| [`@goodbones/oxlint`](packages/oxlint)         | The oxlint plugin: `imports`, `exports`, `members`, `structure` and `surface` as five rules over the same manifest. |
 
 📖 **[Documentation](https://dataquail.github.io/oxlint-utils)**
 
 ```sh
-pnpm add -D oxlint-architecture-rules
+pnpm add -D @goodbones/oxlint @goodbones/cli
 ```
 
 ## Repository layout
 
 ```
 packages/
-  oxlint-architecture-rules/   oxlint-architecture-rules
-website/                       Astro + Starlight documentation site (GitHub Pages)
-scripts/                       release tooling and the local oxlint rule plugin
+  core/         @goodbones/core
+  typescript/   @goodbones/typescript
+  cli/          @goodbones/cli
+  oxlint/       @goodbones/oxlint
+website/        Astro + Starlight documentation site (GitHub Pages)
+scripts/        release tooling and the local oxlint rule plugin
 ```
 
 This is an [Nx](https://nx.dev) workspace using pnpm workspaces. Packages are versioned and published
@@ -46,8 +55,8 @@ pnpm run build:website
 Per-project targets run through Nx:
 
 ```sh
-pnpm exec nx build oxlint-architecture-rules
-pnpm exec nx test oxlint-architecture-rules
+pnpm exec nx build @goodbones/core
+pnpm exec nx test @goodbones/oxlint
 pnpm exec nx affected -t test
 ```
 
@@ -55,10 +64,11 @@ pnpm exec nx affected -t test
 
 `architecture.config.mjs` at the root is a real policy over `packages/`, enforced by the plugin this
 repository publishes and wired into `.oxlintrc.json`. `pnpm lint` therefore fails on a layering
-violation — a `domain/` file reaching an adapter, a `core/` evaluator reaching a live implementation —
-and the policy doubles as the package's largest test. Every family is in it: `pnpm run
-lint:architecture` runs the same policy through the CLI, which adds the graph rules (no cycles, no dead
-modules, the pure tiers reach no adapter) and the coverage floors the policy states for itself.
+violation — a `domain/` file reaching an adapter, a `core/` evaluator reaching a live implementation,
+the core reaching the TypeScript pack, one host reaching the other — and the policy doubles as the
+packages' largest test. Every family is in it: `pnpm run lint:architecture` runs the same policy
+through the CLI, which adds the graph rules (no cycles, no dead modules, the pure tiers reach no
+adapter) and the coverage floors the policy states for itself.
 
 ## How a package is built
 

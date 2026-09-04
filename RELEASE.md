@@ -1,7 +1,20 @@
 # Release Process
 
 Packages in this repository are versioned and published **independently**: a change confined to
-`oxlint-architecture-rules` bumps and releases only that package.
+`@goodbones/typescript` bumps and releases only that package — and, because `updateDependents` is
+`auto`, the packages that depend on it (`@goodbones/cli`, `@goodbones/oxlint`) get a dependency bump
+of their own. Workspace dependencies are written as `workspace:*` and rewritten to the released
+version on publish.
+
+## Packages that have not been published yet
+
+All four packages are `private: true`. `nx release` excludes a private package from versioning and
+publishing, so nothing on `main` can tag or publish one by accident before its name and npm scope are
+settled. Publishing one for the first time is a deliberate commit that removes `private` for that
+package, followed by the **First Publish** workflow below. Do it in dependency order — `core`, then
+`typescript`, then `cli` and `oxlint` — so a released package never depends on an unreleased one.
+The old `oxlint-architecture-rules` name has one beta on the registry; deprecate it with a message
+pointing at `@goodbones/oxlint` and `@goodbones/cli` once those exist.
 
 ## Prerequisites
 
@@ -55,7 +68,7 @@ derive from. Run the **First Publish** workflow (`workflow_dispatch`) instead:
 
 | Input      | Meaning                                                                         |
 | ---------- | ------------------------------------------------------------------------------- |
-| `packages` | package names, comma- or space-separated — `oxlint-architecture-rules`          |
+| `packages` | package names, comma- or space-separated — `@goodbones/core`                    |
 | `preid`    | prerelease identifier, `beta` by default: `0.1.0-beta.0` rather than `0.1.0`    |
 | `dry_run`  | checked by default: prints the plan and the tarball contents, publishes nothing |
 
@@ -183,8 +196,8 @@ publish again.
 
 ## Versioning policy
 
-Standard semver, with one wrinkle: `oxlint-architecture-rules` depends on `effect` at an **exact** beta
-version.
+Standard semver, with one wrinkle: every package depends on `effect` at an **exact** beta version,
+pinned again in the root `pnpm.overrides` so the four share one copy.
 
 Effect 4 betas are mutually incompatible, so moving to a newer one is treated as a breaking change.
 Dependabot is configured not to open PRs for `effect` or `@effect/vitest` for that reason.

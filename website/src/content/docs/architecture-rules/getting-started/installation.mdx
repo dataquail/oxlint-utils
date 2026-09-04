@@ -5,12 +5,18 @@ description: Installing the plugin, wiring it into oxlint, and a first manifest 
 
 ## Install
 
+Two installs, for the two ways the same policy is evaluated:
+
 ```bash
-pnpm add -D oxlint-architecture-rules
+pnpm add -D @goodbones/oxlint   # the plugin: editor feedback and `oxlint` in CI
+pnpm add -D @goodbones/cli      # the `architecture` CLI: check, baseline, coverage, and the graph family
 ```
 
-The plugin resolves modules with [`unrs-resolver`](https://www.npmjs.com/package/unrs-resolver),
-which ships its own native binary; there is nothing else to configure at the OS level.
+Both pull in `@goodbones/core` (the manifest schema and the evaluators) and
+`@goodbones/typescript` (the TypeScript language pack) transitively; you never install those
+directly until a second language pack exists. The pack resolves modules with
+[`unrs-resolver`](https://www.npmjs.com/package/unrs-resolver), which ships its own native
+binary; there is nothing else to configure at the OS level.
 
 ## Wire it into oxlint
 
@@ -20,7 +26,7 @@ specifier and its five rules are enabled by id:
 ```json
 // .oxlintrc.json
 {
-  "jsPlugins": [{ "name": "architecture", "specifier": "oxlint-architecture-rules/plugin" }],
+  "jsPlugins": [{ "name": "architecture", "specifier": "@goodbones/oxlint" }],
   "rules": {
     "architecture/imports": "error",
     "architecture/exports": "error",
@@ -43,7 +49,7 @@ that matches nothing.
 
 ```js
 // architecture.config.mjs
-/** @type {import("oxlint-architecture-rules").Manifest} */
+/** @type {import("@goodbones/core").Manifest} */
 export default {
   resolve: {
     scopes: [{ files: "", language: "typescript", options: { tsconfig: "tsconfig.json" } }],

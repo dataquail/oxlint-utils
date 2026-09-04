@@ -4,44 +4,53 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-An Nx + pnpm monorepo publishing oxlint plugins and tooling. Today that is one package:
+An Nx + pnpm monorepo publishing architecture-policy tooling: a policy written as one manifest of
+the repository (`architecture.config.mjs`), enforced by an oxlint plugin and a CLI. Four packages,
+all under `packages/`:
 
-- **`oxlint-architecture-rules`** (`packages/oxlint-architecture-rules`) — architecture policy written
-  as one manifest of the repository (`architecture.config.mjs`), lowered into five oxlint rules
-  (`imports`, `exports`, `members`, `surface`, `structure`) plus an `architecture` CLI that evaluates
-  the same policy with no linter in the loop — and, being the one adapter that sees every file at
-  once, the `graph` family (cycles, orphans, transitive reach) and the `limits` ratchets on the
-  policy's own reach.
+- **`@goodbones/core`** (`packages/core`) — the manifest schema, the evaluators for the five
+  per-file families (`imports`, `exports`, `members`, `surface`, `structure`) and the `graph` family
+  (cycles, orphans, transitive reach), the `limits` ratchets, the ports a language pack implements,
+  a fake per port under `@goodbones/core/testing`, and `loadPolicy`. It names no language.
+- **`@goodbones/typescript`** (`packages/typescript`) — the TypeScript language pack: facts read
+  through the TypeScript parser, specifiers resolved through `unrs-resolver`, behind the core's
+  `Language` port.
+- **`@goodbones/cli`** (`packages/cli`) — the `architecture` bin: `check`, `baseline`, `coverage`,
+  `explain`, `facts`. Being the one host that sees every file at once, it is where the graph family
+  is evaluated.
+- **`@goodbones/oxlint`** (`packages/oxlint`) — the plugin: five oxlint rules over the same manifest.
 
-The package is unscoped on npm, and its directory name matches its published name. `website/` is an
-Astro + Starlight docs site deployed to GitHub Pages at <https://dataquail.github.io/oxlint-utils>.
+Both hosts depend on the core and the pack and never on each other. The four are `private: true`
+until the brand and npm scope exist (see Releasing). `website/` is an Astro + Starlight docs site
+deployed to GitHub Pages at <https://dataquail.github.io/oxlint-utils>.
 
-**The repository enforces its own architecture with the package it publishes.**
+**The repository enforces its own architecture with the packages it publishes.**
 `architecture.config.mjs` at the root is a real policy over `packages/`, wired into `.oxlintrc.json` as
 the `architecture` JS plugin, so `pnpm lint` fails on a layering violation. That makes the policy the
-package's largest test: a change that breaks lowering or resolution breaks the lint run here first.
+packages' largest test: a change that breaks lowering or resolution breaks the lint run here first.
 Every family is in it, deliberately — `imports` and `structure` for the layering, `members` for
 "`core/` and `domain/` never touch the file system" and "a port member is camelCase", `exports` for
 "a live adapter is constructed only at the composition root" and "no namespace import or `export *`
 between tiers", `surface` for "no default exports, no `export *`", `graph` for no cycles, no dead
-modules and "the pure tiers reach no adapter", and `limits` with both adoption ceilings at zero and
-coverage floors at the numbers the day they were written — so a family whose extraction quietly
-narrows breaks this lint run, not a user's.
+modules, "the pure tiers reach no adapter", "the core reaches no other package" and "the two hosts
+never reach each other", and `limits` with both adoption ceilings at zero and coverage floors at the
+numbers the day they were written — so a family whose extraction quietly narrows breaks this lint
+run, not a user's.
 
 ## Commands
 
 ```bash
-# Build (tsc -b -> build/esm + build/dts)
+# Build (tsc -b -> build/esm + build/dts), in dependency order
 pnpm run build:packages
-pnpm exec nx build oxlint-architecture-rules
+pnpm exec nx build @goodbones/core
 
 # Test
 pnpm run test:packages
-pnpm exec nx test oxlint-architecture-rules
+pnpm exec nx test @goodbones/oxlint
 
 # Typecheck (tsc -b, src and tests)
 pnpm run check:all
-pnpm exec nx check oxlint-architecture-rules
+pnpm exec nx check @goodbones/cli
 
 # Lint — oxlint, type-aware. Warnings are tolerated; errors are not.
 pnpm lint
@@ -52,8 +61,8 @@ pnpm run check:effect
 
 # The same policy through the CLI, with no linter in the loop
 pnpm run lint:architecture
-pnpm run architecture:explain packages/oxlint-architecture-rules/src/core/imports.ts
-pnpm run architecture:facts packages/oxlint-architecture-rules/src/core/imports.ts   # what the parser read
+pnpm run architecture:explain packages/core/src/core/imports.ts
+pnpm run architecture:facts packages/core/src/core/imports.ts   # what the parser read
 pnpm run architecture:coverage                                                     # how much of the tree the policy reaches
 
 # Everything, as the pre-commit hook runs it
@@ -66,16 +75,23 @@ pnpm run build:website
 
 ## Things that will bite you
 
-**The package's tsconfigs reset `paths` to `{}` on purpose.** oxlint loads the plugin's emitted
-JavaScript with a bare dynamic `import()`, and tsc does not rewrite path aliases on emit — a `@/…`
-specifier that typechecks would be a runtime `ERR_MODULE_NOT_FOUND`. Relative specifiers are what
-actually run. `tsconfig.base.json` still declares a `paths` entry for the package so a _future_ sibling
-package can import it by name.
+**Every package's tsconfigs reset `paths` to `{}` on purpose.** oxlint and Node load the emitted
+JavaScript with bare imports, and tsc does not rewrite path aliases on emit — a `@/…` specifier that
+typechecks would be a runtime `ERR_MODULE_NOT_FOUND`. Relative specifiers run within a package; across
+packages a bare `@goodbones/core` runs, resolved through the pnpm workspace link to the sibling's
+`build/`. The `paths` in `tsconfig.base.json` are for the root typecheck only. Each package's
+`tsconfig.src.json` and `tsconfig.build.json` carry a `references` entry per dependency so `tsc -b`
+builds the dependency's declarations first — and `references` is not inherited through `extends`, so
+both files repeat it.
 
-**`build/esm/adapters/oxlint/plugin.js` is the plugin entrypoint**, exposed to consumers as the
-`oxlint-architecture-rules/plugin` subpath export. `build/esm/adapters/cli/main.js` is the `architecture`
-bin. Both are in the `exports`/`bin` maps, so renaming or moving those source files is a breaking change
-even though nothing in `src/index.ts` mentions them.
+**A cross-package import goes through the barrel.** `@goodbones/core` is `packages/core/src/index.ts`
+and `@goodbones/core/testing` is the fakes; the root policy refuses a deep import into a sibling's
+`src/`, as a consumer outside the repo would find one refused by the `exports` map. Tests alias the
+bare names to `src` (`vitest.shared.ts`); `TEST_DIST=1` points them at `build/esm`.
+
+**`packages/oxlint/build/esm/plugin.js` is the plugin entrypoint**, the package's default export (and
+its `./plugin` subpath). `packages/cli/build/esm/main.js` is the `architecture` bin. Both are in the
+`exports`/`bin` maps, so renaming or moving those source files is a breaking change.
 
 **The build must run before the lint.** oxlint imports JavaScript, so a stale `build/` enforces a stale
 policy while still linting green. Two things close that: the `lint` script builds first, and
@@ -87,10 +103,13 @@ specifiers, and it mirrors `tsconfig.base.json`'s `paths` _without_ the trailing
 a mapped target is a template, so a `.ts`-suffixed mapping would make `pkg/x.js` look for `x.js.ts`.
 Changing `paths` in one file and not the other is how rules silently stop resolving.
 
-**Adding a layer means adding a node to `architecture.config.mjs`.** A new folder under `src/` that no
-node governs trips the taxonomy-root catch-all rather than being quietly unpoliced. Before trusting a
-rule you just wrote, plant the violation it exists to catch and watch `pnpm lint` fail — the probe check
-proves a rule _can_ fire, not that it fires on what you meant.
+**Adding a layer means adding a node to `architecture.config.mjs`, and so does adding a package.** A
+new folder under a `src/` that no node governs trips the taxonomy-root catch-all rather than being
+quietly unpoliced; a new package under `packages/` is a new `~/<name>/` node with its own import
+allowlist, plus a `paths` pair in `tsconfig.base.json` and `tsconfig.resolve.json`, an entry in
+`vitest.workspace.ts`, and a reference in the root `tsconfig.json` and `tsconfig.build.json`. Before
+trusting a rule you just wrote, plant the violation it exists to catch and watch `pnpm lint` fail — the
+probe check proves a rule _can_ fire, not that it fires on what you meant.
 
 **Imports use explicit `.js` extensions.** `moduleResolution` is `NodeNext` and the package is ESM —
 `import { x } from "./thing.js"` referring to `thing.ts` is correct, not a mistake to "fix".
@@ -129,7 +148,7 @@ TS2451, and the compiler owns it.
 
 ## Architecture notes
 
-`oxlint-architecture-rules` is itself laid out hexagonally, and the layering is the thing to preserve:
+`@goodbones/core` is laid out hexagonally, and the layering is the thing to preserve:
 
 - `src/domain/` — the manifest schema, the error types, the `Violation` and its line-independent
   fingerprint. No I/O.
@@ -139,16 +158,21 @@ TS2451, and the compiler owns it.
 - `src/load/` — `loadPolicy`: decode, lower, compile and probe a manifest the host has already
   read, with the language packs and the `FileSystem` the host hands in. Language-neutral; the
   resolver and the extractor it returns route each file to the scope's language.
-- `src/ports/` + `src/infrastructure/` — the `FileSystem`, `ModuleResolver`, `FactExtractor` and
-  `Language` ports, with a live implementation (`unrs-resolver`, `typescript`) and a fake per port.
-  Tests drive the fakes. `infrastructure/languages/typescript/` assembles the live extractor and
-  resolver into one `Language`; the pure tiers never import it (a `reach` rule in the repo policy
-  says so), and only the two hosts' `config-loader.ts` construct it. The extractor is the
-  TypeScript parser the CLI reads every file through and the loader parses authored probes with;
-  the plugin reads oxlint's tree instead, and `src/adapters/parity.test.ts` holds the two to one
-  answer.
-- `src/adapters/oxlint/` and `src/adapters/cli/` — the two delivery mechanisms. Both answer to the same
-  core, deliberately, so an alpha oxlint plugin API is not a single point of failure.
+- `src/ports/` — the `FileSystem`, `ModuleResolver`, `FactExtractor` and `Language` ports.
+- `src/infrastructure/` — a fake per port (exported as `@goodbones/core/testing`; tests drive them),
+  and the three things the core does on this host without a language: the live file system, the
+  walker, and reading the manifest file.
+
+The other three packages sit around it:
+
+- `@goodbones/typescript` implements the ports for one language and assembles them into
+  `typescriptLanguage()`. Its extractor is what the CLI reads every file through and what the
+  loader parses authored probes with. Only the two hosts' `config-loader.ts` construct it; the
+  core never imports it (a `reach` rule in the repo policy says so).
+- `@goodbones/cli` and `@goodbones/oxlint` — the two hosts. Both answer to the same core,
+  deliberately, so an alpha oxlint plugin API is not a single point of failure. The plugin reads
+  oxlint's tree instead of the pack's extractor, and `packages/oxlint/src/parity.test.ts` holds the
+  two to one answer — it lives in the plugin because it is the plugin's contract with the pack.
 
 Two properties are load-bearing and pinned by tests:
 
@@ -167,7 +191,13 @@ Two properties are load-bearing and pinned by tests:
 
 `nx release` with `projectsRelationship: "independent"`. Push to `main` → version + tag + GitHub
 release; creating that release triggers the npm publish from `packages/<name>` (not a `dist/`
-subdirectory — the manifest's `files` is what narrows the tarball). See `RELEASE.md`.
+subdirectory — the manifest's `files` is what narrows the tarball). `updateDependents: auto` bumps
+`cli` and `oxlint` when `core` or `typescript` changes. See `RELEASE.md`.
+
+**The four packages are `private: true` until they have been through First Publish.** `nx release`
+excludes private packages, which is what stops the first `feat:` commit on `main` from tagging and
+publishing them under a name that has not been settled. Flip `private` in the first-publish commit,
+one package at a time in dependency order (`core`, `typescript`, then `cli` and `oxlint`).
 
 **A package that has never been released does not go through that path.** It has no git tag and no
 registry version to derive from, so it is bootstrapped by the **First Publish** workflow
