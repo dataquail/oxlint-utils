@@ -134,17 +134,17 @@ describe("loadPolicy", () => {
 
   // The point of an authored probe. Both members rules below are written the
   // same way; only the snippet differs. The synthetic probe passes both. The
-  // real parser reads a member out of the interface and nothing out of the
-  // class body — so the second rule is refused at load, today, rather than
+  // real parser reads a member out of the interface and nothing out of an
+  // object literal — so the second rule is refused at load, today, rather than
   // silently enforcing nothing until someone widens the extractor.
-  const membersRuleWith = (probe: string) => `tree: {
+  const membersRuleWith = (probe: string, subject = `subject: "members"`) => `tree: {
     "packages/server/src/modules/{module}/domain/": {
       children: {
         "*.repository.ts": {
           members: [
             {
               message: 'Port method "{name}" is not in the vocabulary.',
-              subject: "type-members",
+              ${subject},
               in: "*RepositoryShape",
               allow: ["findOne"],
               probe: ${probe},
@@ -165,13 +165,47 @@ describe("loadPolicy", () => {
   });
 
   it("refuses a member rule whose source probe is a shape the parser does not read", async () => {
-    const probe = `{ source: "export class TodosRepositoryShape { findOneById(): void {} }", name: "findOneById" }`;
+    const probe = `{ source: "export const TodosRepositoryShape = { findOneById(): void {} };", name: "findOneById" }`;
     await expect(
       loadPolicy(
         repoRoot,
         writeConfig(`export default { ${RESOLVE}, ${membersRuleWith(probe)} };`),
       ),
     ).rejects.toThrow(/architecture facts/);
+  });
+
+  // A class body is read now, and `declares` is what keeps a rule about ports
+  // from speaking to it: the same probe passes a rule about every declaration
+  // and fails one about types and interfaces.
+  it("judges a class-body probe by the rule's `declares`", async () => {
+    const probe = `{ source: "export class TodosRepositoryShape { findOneById(): void {} }", name: "findOneById" }`;
+    const every = await loadPolicy(
+      repoRoot,
+      writeConfig(`export default { ${RESOLVE}, ${membersRuleWith(probe)} };`),
+    );
+    expect(every.memberRules).toHaveLength(1);
+
+    const typesOnly = `subject: "members", declares: ["type", "interface"]`;
+    await expect(
+      loadPolicy(
+        repoRoot,
+        writeConfig(`export default { ${RESOLVE}, ${membersRuleWith(probe, typesOnly)} };`),
+      ),
+    ).rejects.toThrow(/probe parsed by typescript/);
+  });
+
+  // The old spelling still loads, as the pair it always meant, and says so once.
+  it('reads `subject: "type-members"` as members declared in a type or interface, with a notice', async () => {
+    const probe = `{ source: "export interface TodosRepositoryShape { findOneById(): void }", name: "findOneById" }`;
+    const policy = await loadPolicy(
+      repoRoot,
+      writeConfig(
+        `export default { ${RESOLVE}, ${membersRuleWith(probe, `subject: "type-members"`)} };`,
+      ),
+    );
+    expect(policy.memberRules[0]?.subject).toBe("members");
+    expect(policy.memberRules[0]?.declares).toEqual(["type", "interface"]);
+    expect(policy.notices).toEqual([expect.stringMatching(/"\*\.repository\.ts".*type-members/)]);
   });
 
   it("checks an export restriction's source probe through the parser too", async () => {

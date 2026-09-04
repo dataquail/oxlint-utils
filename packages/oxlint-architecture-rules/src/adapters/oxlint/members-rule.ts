@@ -3,6 +3,7 @@ import {
   evaluateMemberSite,
   memberRulesSelecting,
 } from "../../core/members.js";
+import type { DeclarationKind } from "../../domain/architecture-config.js";
 import { formatMessage } from "../../domain/violation.js";
 import type { LoadedPolicy } from "../../load/policy.js";
 import {
@@ -20,8 +21,10 @@ type NamedNode = ReportableNode & {
 
 type MemberNode = ReportableNode & {
   readonly type: string;
-  readonly key?: NamedNode | null;
+  readonly key?: (NamedNode & { readonly type?: string }) | null;
   readonly computed?: boolean;
+  // A class method's kind: `method`, `get`, `set` or `constructor`.
+  readonly kind?: string;
 };
 
 // A type, as far as this rule reads it: a literal with members, or an
@@ -45,6 +48,8 @@ type InterfaceNode = ReportableNode & {
   readonly body?: { readonly type?: string; readonly body?: unknown } | null;
 };
 
+type ClassNode = InterfaceNode;
+
 const isMemberList = (value: unknown): value is ReadonlyArray<MemberNode> => Array.isArray(value);
 
 type CallNode = ReportableNode & {
@@ -58,7 +63,17 @@ type CallNode = ReportableNode & {
     | null;
 };
 
-const DECLARED_MEMBER_TYPES = new Set(["TSPropertySignature", "TSMethodSignature"]);
+// The member shapes that carry a name a vocabulary rule can speak about: a
+// property or method signature in a type, a property, method or accessor in a
+// class. Mirrors the CLI's `isNamedMember`.
+const DECLARED_MEMBER_TYPES = new Set([
+  "TSPropertySignature",
+  "TSMethodSignature",
+  "PropertyDefinition",
+  "MethodDefinition",
+  "TSAbstractPropertyDefinition",
+  "TSAbstractMethodDefinition",
+]);
 
 // The type literals written in a type, through intersections, unions and
 // parentheses. A reference is not followed: its members are declared where it
@@ -112,12 +127,18 @@ export const makeMembersRule = (policy: LoadedPolicy): OxlintRule => ({
     let file = "";
     let selected: ReadonlyArray<CompiledMemberRule> = [];
 
-    const report = (node: ReportableNode, name: string, declaration?: string): void => {
+    const report = (
+      node: ReportableNode,
+      name: string,
+      declaration?: { readonly name: string; readonly declares: DeclarationKind },
+    ): void => {
       const violations = evaluateMemberSite(selected, {
         file,
-        subject: declaration === undefined ? "calls" : "type-members",
+        subject: declaration === undefined ? "calls" : "members",
         name,
-        ...(declaration === undefined ? {} : { in: declaration }),
+        ...(declaration === undefined
+          ? {}
+          : { in: declaration.name, declares: declaration.declares }),
       });
       for (const violation of violations) {
         if (policy.baseline.isBaselined(violation)) continue;
@@ -125,14 +146,20 @@ export const makeMembersRule = (policy: LoadedPolicy): OxlintRule => ({
       }
     };
 
-    // The members written in a declaration, under that declaration's name. A
-    // computed key is not a name a vocabulary rule can speak about; neither is
-    // an index, call or construct signature.
-    const declared = (declaration: string, members: ReadonlyArray<MemberNode>): void => {
+    // The members written in a declaration, under that declaration's name and
+    // kind. A computed key is not a name a vocabulary rule can speak about;
+    // neither is a private `#name`, an index, call or construct signature, or
+    // a constructor.
+    const declared = (
+      declaration: string,
+      declares: DeclarationKind,
+      members: ReadonlyArray<MemberNode>,
+    ): void => {
       for (const member of members) {
         if (member.computed === true || !DECLARED_MEMBER_TYPES.has(member.type)) continue;
+        if (member.key?.type === "PrivateIdentifier" || member.kind === "constructor") continue;
         const name = nameOf(member.key);
-        if (name !== null) report(member.key ?? member, name, declaration);
+        if (name !== null) report(member.key ?? member, name, { name: declaration, declares });
       }
     };
 
@@ -148,7 +175,7 @@ export const makeMembersRule = (policy: LoadedPolicy): OxlintRule => ({
         const declaration = nameOf(node.id);
         if (declaration === null) return;
         for (const literal of literalsOf(node.typeAnnotation)) {
-          declared(declaration, literal.members ?? []);
+          declared(declaration, "type", literal.members ?? []);
         }
       },
 
@@ -156,7 +183,16 @@ export const makeMembersRule = (policy: LoadedPolicy): OxlintRule => ({
         const declaration = nameOf(node.id);
         const members = node.body?.body;
         if (declaration === null || !isMemberList(members)) return;
-        declared(declaration, members);
+        declared(declaration, "interface", members);
+      },
+
+      // A named class only, as the CLI reads it: an anonymous default class has
+      // no name for `in`, and a class expression is a value.
+      ClassDeclaration(node: ClassNode) {
+        const declaration = nameOf(node.id);
+        const members = node.body?.body;
+        if (declaration === null || !isMemberList(members)) return;
+        declared(declaration, "class", members);
       },
 
       CallExpression(node: CallNode) {

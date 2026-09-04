@@ -397,7 +397,7 @@ export const facts = (
       specifier,
       bindings: read.bindings.get(specifier) ?? [],
     }));
-    const declared = read.memberSites.filter((site) => site.subject === "type-members");
+    const declared = read.memberSites.filter((site) => site.subject === "members");
     const called = read.memberSites.filter((site) => site.subject === "calls");
 
     if (format === "json") {
@@ -421,8 +421,8 @@ export const facts = (
           : bindings.map((binding) => `        ${binding.kind.padEnd(9)} ${binding.symbol}`)),
       ]),
       "",
-      declared.length === 0 ? "  type-members: (none)" : "  type-members:",
-      ...declared.map((site) => `    ${site.in ?? ""}.${site.name}`),
+      declared.length === 0 ? "  members: (none)" : "  members:",
+      ...declared.map((site) => `    ${site.in ?? ""}.${site.name}  (${site.declares ?? "other"})`),
       "",
       called.length === 0 ? "  calls: (none)" : "  calls:",
       ...called.map((site) => `    ${site.name}`),

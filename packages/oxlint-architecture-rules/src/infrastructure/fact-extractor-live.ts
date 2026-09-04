@@ -69,6 +69,19 @@ const literalsOf = (node: ts.TypeNode): ReadonlyArray<ts.TypeLiteralNode> => {
   return [];
 };
 
+// The member shapes that carry a name a vocabulary rule can speak about: a
+// property or method signature in a type, a property, method or accessor in a
+// class. Mirrors the plugin's `DECLARED_MEMBER_TYPES`.
+const isNamedMember = (
+  member: ts.TypeElement | ts.ClassElement,
+): member is (ts.TypeElement | ts.ClassElement) & { readonly name: ts.PropertyName } =>
+  ts.isPropertySignature(member) ||
+  ts.isMethodSignature(member) ||
+  ts.isPropertyDeclaration(member) ||
+  ts.isMethodDeclaration(member) ||
+  ts.isGetAccessorDeclaration(member) ||
+  ts.isSetAccessorDeclaration(member);
+
 const calleeNameOf = (expression: ts.LeftHandSideExpression): string | null => {
   if (ts.isIdentifier(expression)) return expression.text;
   if (ts.isPropertyAccessExpression(expression) && ts.isIdentifier(expression.name)) {
@@ -96,16 +109,21 @@ export const factsOfText = (file: string, text: string): SourceFacts => {
     if (existing !== undefined) for (const binding of found) existing.push(binding);
   };
 
-  // The members written in a declaration, under that declaration's name. A
-  // computed key is not a name a vocabulary rule can speak about; neither is an
-  // index, call or construct signature.
-  const declared = (declaration: string, members: ReadonlyArray<ts.TypeElement>): void => {
+  // The members written in a declaration, under that declaration's name and
+  // kind. A computed key is not a name a vocabulary rule can speak about;
+  // neither is a private `#name`, an index, call or construct signature, or a
+  // constructor.
+  const declared = (
+    declaration: string,
+    declares: DeclarationKind,
+    members: ReadonlyArray<ts.TypeElement | ts.ClassElement>,
+  ): void => {
     for (const member of members) {
-      if (!ts.isPropertySignature(member) && !ts.isMethodSignature(member)) continue;
-      if (ts.isComputedPropertyName(member.name)) continue;
+      if (!isNamedMember(member)) continue;
+      if (ts.isComputedPropertyName(member.name) || ts.isPrivateIdentifier(member.name)) continue;
       const name = nameOf(member.name);
       if (name !== null) {
-        memberSites.push({ file, subject: "type-members", name, in: declaration });
+        memberSites.push({ file, subject: "members", name, in: declaration, declares });
       }
     }
   };
@@ -141,10 +159,16 @@ export const factsOfText = (file: string, text: string): SourceFacts => {
     } else if (ts.isTypeAliasDeclaration(node)) {
       declared(
         node.name.text,
+        "type",
         literalsOf(node.type).flatMap((literal) => literal.members),
       );
     } else if (ts.isInterfaceDeclaration(node)) {
-      declared(node.name.text, node.members);
+      declared(node.name.text, "interface", node.members);
+    } else if (ts.isClassDeclaration(node) && node.name !== undefined) {
+      // A class body is a declaration with members like any other. An anonymous
+      // class (`export default class {}`) has no name for `in` and is not read;
+      // neither is a class expression, which is a value.
+      declared(node.name.text, "class", node.members);
     }
 
     ts.forEachChild(node, visit);

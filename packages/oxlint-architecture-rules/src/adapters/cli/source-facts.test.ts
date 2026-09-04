@@ -161,9 +161,10 @@ describe("member sites", () => {
       factsFor(`type XRepositoryShape = { readonly findOneById: () => void };`).memberSites,
     ).toEqual([
       expect.objectContaining({
-        subject: "type-members",
+        subject: "members",
         name: "findOneById",
         in: "XRepositoryShape",
+        declares: "type",
       }),
     ]);
   });
@@ -235,8 +236,24 @@ describe("declaration shapes", () => {
     ]);
   });
 
-  it("does not read a class body — a class is not a type declaration", () => {
-    expect(declared(`class K { k(): void {} }`)).toEqual([]);
+  it("reads a class body as a declaration, under the class's name", () => {
+    expect(declared(`class K { k(): void {} }`)).toEqual(["K.k"]);
+    expect(factsFor(`class K { k(): void {} }`).memberSites.map((site) => site.declares)).toEqual([
+      "class",
+    ]);
+  });
+
+  it("steps over a class's constructor, private members and computed keys", () => {
+    expect(
+      declared(
+        `declare const key: string; class K { constructor() {} #p(): void {} [key]: string; q = 1; }`,
+      ),
+    ).toEqual(["K.q"]);
+  });
+
+  it("does not read an anonymous class or a class expression", () => {
+    expect(declared(`export default class { k(): void {} }`)).toEqual([]);
+    expect(declared(`const K = class { k(): void {} };`)).toEqual([]);
   });
 });
 

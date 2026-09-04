@@ -131,6 +131,37 @@ export type Mapped = { [K in "a"]: string };
 `,
   },
   {
+    // Every member shape a class body can carry — the ones both adapters read
+    // under the class's name, and the ones both step over: a constructor, a
+    // private `#name`, a computed key, an index signature, and the two
+    // shapes that are not a named class declaration at all.
+    file: "parity/class-members.ts",
+    code: `
+declare const key: string;
+export class Live {
+  a: string = "";
+  b(): void {}
+  get c(): number { return 1; }
+  set c(value: number) {}
+  static d(): void {}
+  "e-f"(): void {}
+  readonly g?: number;
+  #h(): void {}
+  [key]: string;
+  [index: string]: unknown;
+  constructor() {}
+}
+export abstract class Port {
+  abstract i(): void;
+  abstract j: string;
+}
+export default class {
+  k(): void {}
+}
+export const L = class { m(): void {} };
+`,
+  },
+  {
     // Every way a file can offer a name, and the two forms that are not the
     // module's surface: an `export` inside a namespace, and `export =`.
     file: "parity/surface.ts",
@@ -212,7 +243,7 @@ const config = {
       message: "member {name}",
       probe: { from: "parity/type-members.ts", name: "a", in: "Alias" },
       from: "^parity/",
-      subject: "type-members" as const,
+      subject: "members" as const,
     },
   ],
 };
@@ -415,22 +446,40 @@ describe("the corpus exercises every form", () => {
     ]);
   });
 
-  it("reads the members written in an alias or interface, and follows no reference", () => {
+  it("reads the members written in an alias, interface or class, and follows no reference", () => {
     const declared = facts("parity/type-members.ts")
-      .memberSites.filter((site) => site.subject === "type-members")
-      .map((site) => `${site.in ?? ""}.${site.name}`);
+      .memberSites.filter((site) => site.subject === "members")
+      .map((site) => `${site.in ?? ""}.${site.name}:${site.declares ?? ""}`);
     expect(declared).toEqual([
-      "Alias.a",
-      "Alias.b",
-      "Alias.c-d",
-      "Alias.e",
-      "Iface.own",
-      "Base.fromBase",
-      "Intersected.fromIntersection",
-      "Union.fromLeft",
-      "Union.fromRight",
-      "Nested.fromParens",
-      "Generic.g",
+      "Alias.a:type",
+      "Alias.b:type",
+      "Alias.c-d:type",
+      "Alias.e:type",
+      "Iface.own:interface",
+      "Base.fromBase:type",
+      "Intersected.fromIntersection:type",
+      "Union.fromLeft:type",
+      "Union.fromRight:type",
+      "Nested.fromParens:type",
+      "Generic.g:type",
+      "K.k:class",
+    ]);
+  });
+
+  it("reads a class body's named members, and none of the shapes without a name", () => {
+    const declared = facts("parity/class-members.ts")
+      .memberSites.filter((site) => site.subject === "members")
+      .map((site) => `${site.in ?? ""}.${site.name}:${site.declares ?? ""}`);
+    expect(declared).toEqual([
+      "Live.a:class",
+      "Live.b:class",
+      "Live.c:class",
+      "Live.c:class",
+      "Live.d:class",
+      "Live.e-f:class",
+      "Live.g:class",
+      "Port.i:class",
+      "Port.j:class",
     ]);
   });
 });

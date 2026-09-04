@@ -12,13 +12,15 @@ export type Binding = {
   readonly kind: BindingKind;
 };
 
-// One declared or called name, and the declaration it sits in (a type alias's
-// name for `type-members`, absent for `calls`).
+// One declared or called name. For `members`, the declaration it is written in
+// — its name and what it was declared as (`type`, `interface`, `class`); both
+// absent for `calls`.
 export type MemberSite = {
   readonly file: string;
   readonly subject: MemberSubject;
   readonly name: string;
   readonly in?: string;
+  readonly declares?: DeclarationKind;
 };
 
 // One name a file offers, at its top level: `default` for a default export,

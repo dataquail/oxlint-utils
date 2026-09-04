@@ -244,7 +244,8 @@ export default {
                 {
                   message:
                     'A port member is a verb in camelCase: "{name}" is not. The port is the vocabulary every adapter must speak, and its case is part of the contract.',
-                  subject: "type-members",
+                  subject: "members",
+                  declares: ["type", "interface"],
                   allow: "[a-z]*",
                   probe: {
                     source:

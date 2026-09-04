@@ -78,14 +78,16 @@ describe("loadPolicy with a language that is not TypeScript", () => {
   it("parses a source probe through the scope's language", () => {
     const rule = {
       message: 'Port method "{name}" is not in the vocabulary.',
-      subject: "type-members",
+      subject: "members",
       in: "Repo",
       allow: ["FindMany"],
       probe: { source: PORT_SOURCE, name: "FindOne" },
     };
     const parses = go({
       [PORT_SOURCE]: {
-        memberSites: [{ file: "", subject: "type-members", name: "FindOne", in: "Repo" }],
+        memberSites: [
+          { file: "", subject: "members", name: "FindOne", in: "Repo", declares: "interface" },
+        ],
       },
     });
     expect(unwrap(load(manifest([rule]), [parses])).memberRules).toHaveLength(1);
@@ -94,7 +96,7 @@ describe("loadPolicy with a language that is not TypeScript", () => {
   it("names the language and the scope when a source probe reads as nothing", () => {
     const rule = {
       message: "…",
-      subject: "type-members",
+      subject: "members",
       in: "Repo",
       allow: ["FindMany"],
       probe: { source: PORT_SOURCE, name: "FindOne" },

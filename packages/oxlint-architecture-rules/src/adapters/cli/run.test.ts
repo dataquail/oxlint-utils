@@ -51,7 +51,8 @@ const MANIFEST = `export default {
           members: [
             {
               message: 'Port method "{name}" is not in the vocabulary.',
-              subject: "type-members",
+              subject: "members",
+              declares: ["type", "interface"],
               in: "*RepositoryShape",
               allow: ["findOne"],
             },
@@ -243,7 +244,7 @@ describe.sequential("facts", () => {
     expect(output).toContain("edges:");
     expect(output).toContain("../lib/bus.ts");
     expect(output).toContain("named     makeBus");
-    expect(output).toContain("type-members:");
+    expect(output).toContain("members:");
     expect(output).toContain("ThingRepositoryShape.findOneById");
     expect(output).toContain("calls: (none)");
     expect(output).toContain("exports:");

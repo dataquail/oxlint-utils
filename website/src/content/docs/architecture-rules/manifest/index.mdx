@@ -66,7 +66,8 @@ real.
       members: [
         {
           message: 'A port method named "{name}" is a query in disguise.',
-          subject: "type-members",
+          subject: "members",
+          declares: ["type", "interface"],
           in: "*RepositoryShape",
           allow: ["findOneById", "save", "delete"],
         },

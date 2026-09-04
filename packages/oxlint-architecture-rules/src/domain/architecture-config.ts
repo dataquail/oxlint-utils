@@ -110,20 +110,39 @@ export const ExportRule = Schema.Struct({
   fix: Schema.optionalKey(Schema.Literals(["subpath-namespace-import"])),
 });
 
-// What kind of declared name a rule is about. `type-members` are the members
-// written in a named type declaration — an alias or an interface, through
-// intersections and unions — (a port's method vocabulary); `calls` are called
-// identifiers (the hooks a tier may reach for).
-const MemberSubject = Schema.Literals(["type-members", "calls"]);
+// What a name was declared as. For an export site, the declaration that
+// introduced it; for a member site, the declaration it is written in.
+// `expression` is `export default <expr>`; `other` covers a namespace, an
+// `export =`, and a re-export, whose declaration is somewhere else.
+export const DeclarationKind = Schema.Literals([
+  "function",
+  "class",
+  "variable",
+  "type",
+  "interface",
+  "enum",
+  "expression",
+  "other",
+]);
+
+// What kind of name a rule is about. `members` are the names written in a
+// named declaration — a type alias, an interface, a class body — under that
+// declaration's name (a port's method vocabulary); `calls` are called
+// identifiers (the hooks a tier may reach for). Which declarations a `members`
+// rule speaks to is `declares`' to say, so the vocabulary carries no language's
+// split between types and values.
+const MemberSubject = Schema.Literals(["members", "calls"]);
 
 // `source`, when present, is a snippet the loading adapter parses: the probe
 // then holds only if a site named `name` comes out of the parser and the rule
 // reports it — the declaration shape is the parser's to judge, not `in`'s.
-// Without it the probe is a synthetic site of `name` inside `in`.
+// Without it the probe is a synthetic site of `name` inside `in`, declared as
+// `declares`.
 const MemberProbe = Schema.Struct({
   from: Schema.String,
   name: Schema.String,
   in: Schema.optionalKey(Schema.String),
+  declares: Schema.optionalKey(DeclarationKind),
   source: Schema.optionalKey(Schema.String),
 });
 
@@ -137,8 +156,11 @@ export const MemberRule = Schema.Struct({
   from: PatternList,
   fromNot: Schema.optionalKey(PatternList),
   subject: MemberSubject,
-  // `type-members` only: which declaration's members are governed.
+  // `members` only: which declaration's members are governed, by its name.
   in: Schema.optionalKey(PatternList),
+  // `members` only: which kinds of declaration are governed. Omit for every
+  // kind — a type alias, an interface and a class body alike.
+  declares: Schema.optionalKey(Schema.Array(DeclarationKind)),
   // Which names the rule speaks to at all. Omit for "every one".
   match: Schema.optionalKey(PatternList),
   matchNot: Schema.optionalKey(PatternList),
@@ -146,20 +168,6 @@ export const MemberRule = Schema.Struct({
   // the violation.
   allow: Schema.optionalKey(PatternList),
 });
-
-// What an exported name was declared as, when it was declared in the file.
-// `expression` is `export default <expr>`; `other` covers a namespace, an
-// `export =`, and a re-export, whose declaration is somewhere else.
-export const DeclarationKind = Schema.Literals([
-  "function",
-  "class",
-  "variable",
-  "type",
-  "interface",
-  "enum",
-  "expression",
-  "other",
-]);
 
 // One export site, as a probe states it: the name (`default` for a default
 // export, `*` for `export *`), its binding kind, and optionally what it was

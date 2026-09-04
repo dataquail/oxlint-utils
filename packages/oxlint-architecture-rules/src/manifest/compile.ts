@@ -715,6 +715,7 @@ export const lowerManifest = (
                 from: scopeProbe,
                 name: probeMemberName(spec.match),
                 ...(spec.in === undefined ? {} : { in: "ZzProbeRepositoryShape" }),
+                ...(spec.declares?.[0] === undefined ? {} : { declares: spec.declares[0] }),
               }
             : { from: scopeProbe, name: spec.probe.name, source: spec.probe.source },
         // On a folder the rule covers the subtree, as `imports` does — a
@@ -724,6 +725,7 @@ export const lowerManifest = (
         from: scope,
         subject: spec.subject,
         ...(spec.in === undefined ? {} : { in: asRegex(spec.in) }),
+        ...(spec.declares === undefined ? {} : { declares: [...spec.declares] }),
         ...(spec.match === undefined ? {} : { match: asRegex(spec.match) }),
         ...(spec.matchNot === undefined ? {} : { matchNot: asRegex(spec.matchNot) }),
         ...(spec.allow === undefined ? {} : { allow: asRegex(spec.allow) }),

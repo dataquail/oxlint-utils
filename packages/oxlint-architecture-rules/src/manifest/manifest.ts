@@ -83,8 +83,11 @@ const MemberProbe = Schema.Struct({
 
 const Members = Schema.Struct({
   message: Schema.String,
-  subject: Schema.Literals(["type-members", "calls"]),
+  subject: Schema.Literals(["members", "calls"]),
   in: Schema.optionalKey(Globs),
+  // `members` only: which declarations are read — `type`, `interface`,
+  // `class`. Omit for every kind.
+  declares: Schema.optionalKey(Schema.Array(DeclarationKind)),
   match: Schema.optionalKey(Globs),
   matchNot: Schema.optionalKey(Globs),
   allow: Schema.optionalKey(Globs),
@@ -346,16 +349,60 @@ const normalizeLegacyResolve = (
   return { input: { ...input, resolve: { ...restOfResolve, scopes } }, notices };
 };
 
+// Until this beta ends, `subject: "type-members"` reads as `subject: "members"`
+// with `declares: ["type", "interface"]` — the TypeScript split between types
+// and values, which the vocabulary no longer carries. Rewritten on the raw
+// tree, so the schema itself never has to know the old name.
+const normalizeLegacyMembers = (
+  input: unknown,
+): { readonly input: unknown; readonly notices: ReadonlyArray<string> } => {
+  if (!isRecord(input) || !isRecord(input.tree)) return { input, notices: [] };
+  const notices: Array<string> = [];
+
+  const node = (key: string, value: unknown): unknown => {
+    if (!isRecord(value)) return value;
+    const members = isList(value.members)
+      ? value.members.map((spec) => {
+          if (!isRecord(spec) || spec.subject !== "type-members") return spec;
+          notices.push(
+            `"${key}" has a members rule with \`subject: "type-members"\`. That name is ` +
+              `deprecated: write \`subject: "members", declares: ["type", "interface"]\`.`,
+          );
+          return { ...spec, subject: "members", declares: spec.declares ?? ["type", "interface"] };
+        })
+      : value.members;
+    const children = isRecord(value.children)
+      ? Object.fromEntries(
+          Object.entries(value.children).map(([childKey, child]) => [
+            childKey,
+            node(childKey, child),
+          ]),
+        )
+      : value.children;
+    return {
+      ...value,
+      ...(members === undefined ? {} : { members }),
+      ...(children === undefined ? {} : { children }),
+    };
+  };
+
+  const tree = Object.fromEntries(
+    Object.entries(input.tree).map(([key, value]) => [key, node(key, value)]),
+  );
+  return { input: { ...input, tree }, notices };
+};
+
 export const decodeManifest = (
   configPath: string,
   input: unknown,
 ): Result.Result<DecodedManifest, ConfigInvalid> => {
-  const normalized = normalizeLegacyResolve(input);
+  const resolve = normalizeLegacyResolve(input);
+  const members = normalizeLegacyMembers(resolve.input);
   return Result.map(
     Result.mapError(
-      decode(normalized.input),
+      decode(members.input),
       (issue) => new ConfigInvalid({ configPath, detail: String(issue) }),
     ),
-    (manifest) => ({ manifest, notices: normalized.notices }),
+    (manifest) => ({ manifest, notices: [...resolve.notices, ...members.notices] }),
   );
 };

@@ -721,7 +721,8 @@ describe("member rules", () => {
               members: [
                 {
                   message: "Not in the vocabulary.",
-                  subject: "type-members",
+                  subject: "members",
+                  declares: ["type", "interface"],
                   in: "*RepositoryShape",
                   allow: ["findOne"],
                   probe: {
@@ -741,6 +742,24 @@ describe("member rules", () => {
     expect(rule?.probe.source).toBe("export type X = { findOneById(): void };");
     expect(rule?.probe.in).toBeUndefined();
     expect(rule?.probe.from).toMatch(/\.repository\.ts$/);
+    expect(rule?.declares).toEqual(["type", "interface"]);
+  });
+
+  // The synthetic probe must be a site the rule speaks to, so it is declared
+  // in the first kind the rule names.
+  it("declares the synthetic probe in the first kind the rule names", () => {
+    const lowered = lowerManifest(
+      base({
+        "@/domain/": {
+          layout: "open",
+          children: {},
+          members: [
+            { message: "…", subject: "members", declares: ["class", "interface"], in: "*Shape" },
+          ],
+        },
+      }),
+    );
+    expect(lowered.members[0]?.probe.declares).toBe("class");
   });
 });
 
