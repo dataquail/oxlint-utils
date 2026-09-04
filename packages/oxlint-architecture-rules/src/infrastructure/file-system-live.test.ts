@@ -18,6 +18,13 @@ describe("makeFileSystemLive", () => {
     expect(fileSystem.exists("packages/oxlint-architecture-rules/nowhere.json")).toBe(false);
   });
 
+  it("reads a file's text, and null for one that is not there", () => {
+    expect(fileSystem.readText("packages/oxlint-architecture-rules/package.json")).toContain(
+      '"name": "oxlint-architecture-rules"',
+    );
+    expect(fileSystem.readText("packages/oxlint-architecture-rules/nowhere.json")).toBeNull();
+  });
+
   // Every handler in a folder asks about the same `../../infrastructure/...`
   // shape, so a repeated question must not become a repeated syscall.
   it("gives the same answer from its cache on a repeat question", () => {

@@ -17,10 +17,11 @@ import { compileMemberRules, evaluateMemberSite, memberRulesSelecting } from "..
 import { EMPTY_STRUCTURE } from "../core/structure.js";
 import { compileSurfaceRules, evaluateSurface, surfaceRulesSelecting } from "../core/surface.js";
 import { formatMessage } from "../domain/violation.js";
+import { makeFactExtractorFake } from "../infrastructure/fact-extractor-fake.js";
 import { factsOfText } from "../infrastructure/fact-extractor-live.js";
 import { makeFileSystemFake } from "../infrastructure/file-system-fake.js";
 import { makeModuleResolverFake } from "../infrastructure/module-resolver-fake.js";
-import type { LoadedPolicy } from "./oxlint/config-loader.js";
+import type { LoadedPolicy } from "../load/policy.js";
 import { makeExportsRule } from "./oxlint/exports-rule.js";
 import { makeImportsRule } from "./oxlint/imports-rule.js";
 import { makeMembersRule } from "./oxlint/members-rule.js";
@@ -247,6 +248,7 @@ const policy: LoadedPolicy = {
   structure: EMPTY_STRUCTURE,
   fileSystem: makeFileSystemFake([]),
   languages: [],
+  extractor: makeFactExtractorFake({}),
   resolver,
   ignoreUnresolved: [],
   notices: [],

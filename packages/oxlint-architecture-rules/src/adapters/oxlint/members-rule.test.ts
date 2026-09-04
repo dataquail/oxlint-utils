@@ -9,9 +9,10 @@ import { EMPTY_BASELINE, makeBaselineFilter } from "../../core/baseline.js";
 import { EMPTY_GRAPH_RULES } from "../../core/graph.js";
 import { compileMemberRules } from "../../core/members.js";
 import { EMPTY_STRUCTURE } from "../../core/structure.js";
+import { makeFactExtractorFake } from "../../infrastructure/fact-extractor-fake.js";
 import { makeFileSystemFake } from "../../infrastructure/file-system-fake.js";
 import { makeModuleResolverFake } from "../../infrastructure/module-resolver-fake.js";
-import type { LoadedPolicy } from "./config-loader.js";
+import type { LoadedPolicy } from "../../load/policy.js";
 import { makeMembersRule } from "./members-rule.js";
 
 RuleTester.describe = describe;
@@ -64,6 +65,7 @@ const policy = (): LoadedPolicy => {
     adoption: { unrestricted: [], partial: [] },
     fileSystem: makeFileSystemFake([]),
     languages: [],
+    extractor: makeFactExtractorFake({}),
     resolver: makeModuleResolverFake({}),
     ignoreUnresolved: [],
     notices: [],

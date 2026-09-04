@@ -8,7 +8,7 @@ import { afterAll, describe, expect, it } from "vitest";
 // Through the barrel on purpose: this is the package's public surface, and a
 // re-export that stops resolving is a break no internal test would notice.
 import { ConfigInvalid } from "../../index.js";
-import { loadPolicy } from "./config-loader.js";
+import { loadPolicyFromFile as loadPolicy } from "./config-loader.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../..");
 // Inside the package rather than the OS temp dir: Vitest resolves the loader's
@@ -83,11 +83,11 @@ describe("loadPolicy", () => {
     ).toBe(true);
   });
 
-  it("refuses a scope whose language nothing answers to, naming the scope", async () => {
+  it("refuses a scope whose language no loaded pack answers to, naming both", async () => {
     const go = `resolve: { scopes: [{ files: "", language: "go" }] }`;
     await expect(
       loadPolicy(repoRoot, writeConfig(`export default { ${go}, ${TREE} };`)),
-    ).rejects.toThrow(/resolve scope "" \(go\)/);
+    ).rejects.toThrow(/names the language "go".*\(loaded: typescript\)/);
   });
 
   it("refuses a TypeScript scope whose options it does not understand", async () => {

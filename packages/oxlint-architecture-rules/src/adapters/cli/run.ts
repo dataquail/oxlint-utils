@@ -23,7 +23,7 @@ import { evaluateSurface, surfaceRulesSelecting } from "../../core/surface.js";
 import type { SourceFacts } from "../../domain/facts.js";
 import { fingerprintOf, formatMessage, type Violation } from "../../domain/violation.js";
 import { listSourceFiles } from "../../infrastructure/walk.js";
-import { type LoadedPolicy, loadPolicy } from "../oxlint/config-loader.js";
+import { type LoadedPolicy, loadPolicyFromFile } from "./config-loader.js";
 import { buildGraph } from "./graph.js";
 import { sourceFactsOf } from "./source-facts.js";
 
@@ -60,7 +60,7 @@ export const collectFindings = (policy: LoadedPolicy, roots: ReadonlyArray<strin
   const factsOf = (file: string): SourceFacts => {
     const cached = parsed.get(file);
     if (cached !== undefined) return cached;
-    const facts = sourceFactsOf(policy.repoRoot, file);
+    const facts = sourceFactsOf(policy.repoRoot, file, policy.extractor);
     parsed.set(file, facts);
     return facts;
   };
@@ -389,7 +389,7 @@ export const facts = (
       .replaceAll(path.sep, "/");
 
     const read = yield* Effect.try({
-      try: () => sourceFactsOf(policy.repoRoot, relative),
+      try: () => sourceFactsOf(policy.repoRoot, relative, policy.extractor),
       catch: (cause) => fail(`could not read ${relative}: ${String(cause)}`),
     });
 
@@ -442,7 +442,7 @@ export const run = (
   Effect.gen(function* () {
     const [command = "check", ...rest] = argv;
     const policy = yield* Effect.tryPromise({
-      try: () => loadPolicy(repoRoot),
+      try: () => loadPolicyFromFile(repoRoot),
       catch: (cause) => fail(String(cause)),
     });
     yield* Effect.sync(() => {

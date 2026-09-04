@@ -8,9 +8,10 @@ import { describe, it } from "vitest";
 import { EMPTY_BASELINE, makeBaselineFilter } from "../../core/baseline.js";
 import { EMPTY_GRAPH_RULES } from "../../core/graph.js";
 import { compileStructure } from "../../core/structure.js";
+import { makeFactExtractorFake } from "../../infrastructure/fact-extractor-fake.js";
 import { makeFileSystemFake } from "../../infrastructure/file-system-fake.js";
 import { makeModuleResolverFake } from "../../infrastructure/module-resolver-fake.js";
-import type { LoadedPolicy } from "./config-loader.js";
+import type { LoadedPolicy } from "../../load/policy.js";
 import { makeStructureRule } from "./structure-rule.js";
 
 RuleTester.describe = describe;
@@ -70,6 +71,7 @@ const policy = (present: ReadonlyArray<string>): LoadedPolicy => {
     structure: structure.success,
     fileSystem: makeFileSystemFake(present),
     languages: [],
+    extractor: makeFactExtractorFake({}),
     resolver: makeModuleResolverFake({}),
     ignoreUnresolved: [],
     notices: [],

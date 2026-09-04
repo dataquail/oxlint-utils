@@ -1,6 +1,14 @@
 import type { FileSystem } from "../ports/file-system.js";
 
-export const makeFileSystemFake = (present: Iterable<string>): FileSystem => {
-  const paths = new Set(present);
-  return { exists: (repoRelativePath) => paths.has(repoRelativePath) };
+// The files that exist, and optionally what some of them say. A file staged
+// with contents exists; one staged by name alone exists and reads as nothing.
+export const makeFileSystemFake = (
+  present: Iterable<string>,
+  contents: Readonly<Record<string, string>> = {},
+): FileSystem => {
+  const paths = new Set([...present, ...Object.keys(contents)]);
+  return {
+    exists: (repoRelativePath) => paths.has(repoRelativePath),
+    readText: (repoRelativePath) => contents[repoRelativePath] ?? null,
+  };
 };

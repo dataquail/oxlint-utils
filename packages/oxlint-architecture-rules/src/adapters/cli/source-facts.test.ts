@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { afterAll, describe, expect, it } from "vitest";
 
+import { makeFactExtractorLive } from "../../infrastructure/fact-extractor-live.js";
 import { sourceFactsOf } from "./source-facts.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -23,7 +24,7 @@ const factsFor = (source: string, extension = "ts") => {
   counter += 1;
   const file = `packages/oxlint-architecture-rules/.tmp-facts-tests/fixture-${String(counter)}.${extension}`;
   writeFileSync(path.join(repoRoot, file), source);
-  return sourceFactsOf(repoRoot, file);
+  return sourceFactsOf(repoRoot, file, makeFactExtractorLive());
 };
 
 describe("specifiers", () => {

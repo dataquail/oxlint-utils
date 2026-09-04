@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import * as path from "node:path";
 
 import type { FileSystem } from "../ports/file-system.js";
@@ -15,6 +15,13 @@ export const makeFileSystemLive = (repoRoot: string): FileSystem => {
       const answer = existsSync(path.resolve(repoRoot, repoRelativePath));
       cache.set(repoRelativePath, answer);
       return answer;
+    },
+    readText: (repoRelativePath) => {
+      try {
+        return readFileSync(path.resolve(repoRoot, repoRelativePath), "utf8");
+      } catch {
+        return null;
+      }
     },
   };
 };

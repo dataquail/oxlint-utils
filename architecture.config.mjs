@@ -81,6 +81,7 @@ export default {
       symbols: ["makeFileSystemLive", "makeModuleResolverLive", "makeFactExtractorLive"],
       except: [
         "@arch/adapters/oxlint/config-loader.ts",
+        "@arch/adapters/cli/config-loader.ts",
         // A language pack is what assembles the live extractor and resolver
         // for its language, so it is the one other place that may name them.
         "@arch/infrastructure/languages/*/index.ts",
@@ -98,7 +99,12 @@ export default {
         "A language pack is constructed where the package is composed, and handed down as the `Language` port. Nothing in between names TypeScript — which is what lets a second language be added without editing the core.",
       module: "@arch/infrastructure/languages/*/index.ts",
       symbols: ["typescriptLanguage"],
-      except: ["@arch/adapters/oxlint/config-loader.ts", "@arch/index.ts", "**/*.test.ts"],
+      except: [
+        "@arch/adapters/oxlint/config-loader.ts",
+        "@arch/adapters/cli/config-loader.ts",
+        "@arch/index.ts",
+        "**/*.test.ts",
+      ],
       probe: {
         source:
           'import { typescriptLanguage } from "../infrastructure/languages/typescript/index.js";',
@@ -154,8 +160,14 @@ export default {
       {
         name: "pure-tiers-reach-no-adapter",
         message:
-          "The pure tiers — domain, ports, core, manifest — reach no live implementation and no delivery adapter, through any number of hops. That is what makes them testable without one.",
-        from: ["@arch/domain/**", "@arch/ports/**", "@arch/core/**", "@arch/manifest/**"],
+          "The pure tiers — domain, ports, core, manifest, load — reach no live implementation and no delivery adapter, through any number of hops. That is what makes them testable without one.",
+        from: [
+          "@arch/domain/**",
+          "@arch/ports/**",
+          "@arch/core/**",
+          "@arch/manifest/**",
+          "@arch/load/**",
+        ],
         fromNot: "**/*.test.ts",
         to: ["@arch/infrastructure/*-live.ts", "@arch/adapters/**"],
       },
@@ -163,7 +175,13 @@ export default {
         name: "pure-tiers-reach-no-language-pack",
         message:
           "The pure tiers reach no language pack, through any number of hops. The manifest vocabulary is not TypeScript's; a second language is a second pack, not an edit to the core.",
-        from: ["@arch/domain/**", "@arch/ports/**", "@arch/core/**", "@arch/manifest/**"],
+        from: [
+          "@arch/domain/**",
+          "@arch/ports/**",
+          "@arch/core/**",
+          "@arch/manifest/**",
+          "@arch/load/**",
+        ],
         fromNot: "**/*.test.ts",
         to: "@arch/infrastructure/languages/**",
       },
@@ -272,6 +290,26 @@ export default {
                 message:
                   "Lowering is a transformation of the domain types. It reaches the domain and its own siblings; it does not evaluate, and it does not resolve.",
                 allow: ["@arch/domain/**", "@arch/manifest/**"],
+              },
+            },
+
+            "load/": {
+              message:
+                "load/ turns a manifest into a policy: decode, lower, compile, and probe every rule, with whatever language packs the host hands in. It composes the pure tiers and names no language and no live adapter.",
+              layout: "open",
+              children: {},
+              members: [NO_FILE_SYSTEM_CALLS],
+              imports: {
+                message:
+                  "load/ composes the pure tiers. It reaches the domain, the ports, the core, the manifest compiler and its own siblings; a live adapter or a language pack reaches it only as an argument.",
+                allow: [
+                  "@arch/domain/**",
+                  "@arch/ports/**",
+                  "@arch/core/**",
+                  "@arch/manifest/**",
+                  "@arch/load/**",
+                  "@arch/infrastructure/*-fake.ts",
+                ],
               },
             },
 

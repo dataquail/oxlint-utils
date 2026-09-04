@@ -6,7 +6,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { loadPolicy } from "../oxlint/config-loader.js";
+import { loadPolicyFromFile as loadPolicy } from "./config-loader.js";
 import {
   check,
   type CliFailure,
