@@ -13,11 +13,18 @@ const PatternList = Schema.Union([Schema.String, Schema.Array(Schema.String)]);
 // A synthetic edge this rule must report. Every rule carries one: a configured
 // rule that reports nothing is indistinguishable from a clean codebase, and that
 // is the failure this package exists to make impossible. `from` is a repo-relative
-// importer path, `to` a repo-relative RESOLVED target (a `node_modules/...` path
-// for an external, `node:<name>` for a builtin).
+// importer path. `to` is the target in one of three forms, and the form is its
+// dependency kind: a repo-relative resolved path is `local`, `{ external }`
+// names a third-party package, `{ builtin }` names a runtime module.
+const ImportProbeTarget = Schema.Union([
+  Schema.String,
+  Schema.Struct({ external: Schema.String }),
+  Schema.Struct({ builtin: Schema.String }),
+]);
+
 const ImportProbe = Schema.Struct({
   from: Schema.String,
-  to: Schema.String,
+  to: ImportProbeTarget,
 });
 
 export const ImportRule = Schema.Struct({
@@ -28,8 +35,14 @@ export const ImportRule = Schema.Struct({
   fromNot: Schema.optionalKey(PatternList),
   to: Schema.optionalKey(PatternList),
   toNot: Schema.optionalKey(PatternList),
-  // `external` is a target inside node_modules, `builtin` a node: module,
-  // `local` anything else. Replaces dependency-cruiser's `dependencyTypes`,
+  // Third-party packages this rule permits, by package name. An external
+  // target is judged by its package, never by where the language's resolver
+  // happened to find it on disk — `to`/`toNot` patterns are for the
+  // repository's own files.
+  externals: Schema.optionalKey(Schema.Array(Schema.String)),
+  // `external` is a third-party package, `builtin` a runtime module, `local`
+  // anything in the repository. Compared against what the resolver reports,
+  // never read off a path. Replaces dependency-cruiser's `dependencyTypes`,
   // whose finer npm grades no rule in this repo distinguishes.
   dependencyKind: Schema.optionalKey(Schema.Literals(["external", "local", "builtin"])),
 });
@@ -308,6 +321,7 @@ export type ImportRule = (typeof ImportRule)["Type"];
 export type ResolveConfig = (typeof ResolveConfig)["Type"];
 export type ResolveScope = (typeof ResolveScope)["Type"];
 export type ImportProbe = (typeof ImportProbe)["Type"];
+export type ImportProbeTarget = (typeof ImportProbeTarget)["Type"];
 export type ExportRule = (typeof ExportRule)["Type"];
 export type ExportProbe = (typeof ExportProbe)["Type"];
 export type BindingKind = (typeof BindingKind)["Type"];

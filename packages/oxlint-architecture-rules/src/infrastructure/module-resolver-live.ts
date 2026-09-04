@@ -6,6 +6,7 @@ import { ResolverFactory } from "unrs-resolver";
 import type { ResolveConfig } from "../domain/architecture-config.js";
 import { ImportUnresolved } from "../domain/architecture-error.js";
 import type { ModuleResolver, ResolvedTarget } from "../ports/module-resolver.js";
+import { npmPackageOf } from "./npm-package.js";
 
 // `.js` in a NodeNext import specifier points at a `.ts` on disk. Without this,
 // every relative import in the repo resolves to nothing and every path rule about
@@ -22,9 +23,14 @@ const DEFAULT_MAIN_FIELDS = ["main", "types"];
 
 const toPosix = (value: string): string => value.replaceAll(path.sep, "/");
 
+// A file under `node_modules/` is a third-party package, and the policy speaks
+// about it by the package's name rather than by where pnpm or npm put it.
 const toResolvedTarget = (repoRoot: string, absolutePath: string): ResolvedTarget => {
   const relative = toPosix(path.relative(repoRoot, absolutePath));
-  return { path: relative, kind: relative.includes("node_modules/") ? "external" : "local" };
+  const pkg = npmPackageOf(relative);
+  return pkg === undefined
+    ? { path: relative, kind: "local" }
+    : { path: relative, kind: "external", package: pkg };
 };
 
 type Scope = {

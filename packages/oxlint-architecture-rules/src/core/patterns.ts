@@ -2,7 +2,6 @@ import * as Result from "effect/Result";
 
 import { patternsOf } from "../domain/architecture-config.js";
 import { PatternInvalid } from "../domain/architecture-error.js";
-import type { DependencyKind } from "../ports/module-resolver.js";
 
 const BACKREFERENCE = /\$([1-9])/g;
 
@@ -100,11 +99,6 @@ export const firstFromMatch = (rule: Selectable, importer: string): RegExpExecAr
   }
   return null;
 };
-
-// A probe states its target as a resolved path, so its dependency kind is read
-// back off that path rather than restated in the config.
-export const kindOfPath = (path: string): DependencyKind =>
-  path.startsWith("node:") ? "builtin" : path.includes("node_modules/") ? "external" : "local";
 
 export type Targeted = Selectable & {
   readonly to: ReadonlyArray<string>;

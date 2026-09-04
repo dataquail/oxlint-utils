@@ -3,8 +3,13 @@ import { describe, expect, it } from "vitest";
 
 import type { ImportRule } from "../domain/architecture-config.js";
 import { makeModuleResolverFake } from "../infrastructure/module-resolver-fake.js";
-import { compileImportRules, evaluateImportEdge, rulesFailingTheirProbe } from "./imports.js";
-import { kindOfPath } from "./patterns.js";
+import type { ResolvedTarget } from "../ports/module-resolver.js";
+import {
+  compileImportRules,
+  evaluateImportEdge,
+  probeTargetOf,
+  rulesFailingTheirProbe,
+} from "./imports.js";
 
 const compile = (rules: ReadonlyArray<ImportRule>) => {
   const compiled = compileImportRules(rules);
@@ -14,7 +19,7 @@ const compile = (rules: ReadonlyArray<ImportRule>) => {
 
 const violationsOf = (
   rules: ReadonlyArray<ImportRule>,
-  targets: Record<string, string>,
+  targets: Record<string, string | ResolvedTarget>,
   importer: string,
   specifier: string,
 ) => {
@@ -151,17 +156,17 @@ describe("evaluateImportEdge", () => {
     });
   });
 
-  describe("dependencyKind", () => {
+  describe("dependencyKind and externals", () => {
     const externalOnly: ImportRule = {
       name: "domain-no-external-beyond-effect",
       message: "domain/ may only depend on effect.",
       probe: {
         from: "packages/server/src/modules/todos/domain/todo/todo.root.ts",
-        to: "node_modules/.pnpm/lodash@4.17.21/node_modules/lodash/index.js",
+        to: { external: "lodash" },
       },
       from: "^packages/server/src/modules/[^/]+/domain/",
       dependencyKind: "external",
-      toNot: "/node_modules/effect/",
+      externals: ["effect"],
     };
 
     const targets = {
@@ -184,6 +189,45 @@ describe("evaluateImportEdge", () => {
 
     it("does not apply to a local target", () => {
       expect(violationsOf([externalOnly], targets, from, "local")).toEqual([]);
+    });
+
+    // The point of judging by name: the rule says nothing about where a
+    // language keeps its packages, so a target resolved anywhere at all — a
+    // vendored copy, another language's module cache — is admitted by the same
+    // line in the manifest.
+    it("judges an external by its package name, wherever the resolver found it", () => {
+      const vendored = {
+        effect: {
+          path: "vendor/effect-4.0.0/Schema.js",
+          kind: "external" as const,
+          package: "effect",
+        },
+        lodash: {
+          path: "vendor/lodash-4.17.21/index.js",
+          kind: "external" as const,
+          package: "lodash",
+        },
+      };
+      expect(violationsOf([externalOnly], vendored, from, "effect")).toEqual([]);
+      expect(violationsOf([externalOnly], vendored, from, "lodash")).toEqual([
+        "domain-no-external-beyond-effect",
+      ]);
+    });
+
+    // An allowlist over local paths that also names its externals — the shape
+    // lowering emits for a tier with both `allow` and `external`.
+    it("admits a named external from an allowlist that would otherwise refuse it", () => {
+      const allowlist: ImportRule = {
+        name: "domain/imports",
+        message: "domain/ reaches itself and effect.",
+        probe: { from, to: "packages/zzprobe/nowhere.ts" },
+        from: "^packages/server/src/modules/[^/]+/domain/",
+        toNot: ["^packages/server/src/modules/[^/]+/domain/"],
+        externals: ["effect"],
+      };
+      expect(violationsOf([allowlist], targets, from, "effect")).toEqual([]);
+      expect(violationsOf([allowlist], targets, from, "lodash")).toEqual(["domain/imports"]);
+      expect(violationsOf([allowlist], targets, from, "local")).toEqual(["domain/imports"]);
     });
   });
 
@@ -227,18 +271,31 @@ describe("rulesFailingTheirProbe", () => {
     ]);
   });
 
-  it("classifies a probe target by path, so a builtin probe reaches a builtin rule", () => {
+  it("reads a builtin probe's kind from its form, so it reaches a builtin rule", () => {
     const builtinRule: ImportRule = {
       name: "no-builtins-in-domain",
       message: "domain/ stays free of node builtins.",
       probe: {
         from: "packages/server/src/modules/todos/domain/todo/todo.root.ts",
-        to: "node:crypto",
+        to: { builtin: "node:crypto" },
       },
       from: "^packages/server/src/modules/[^/]+/domain/",
       dependencyKind: "builtin",
     };
     expect(rulesFailingTheirProbe(compile([builtinRule]))).toEqual([]);
+  });
+
+  // The probe is a target the rule must REPORT. An external the rule admits by
+  // name is not one, so a rule probed with its own allowance is vacuous.
+  it("catches a rule whose probe names an external it admits", () => {
+    const vacuous: ImportRule = {
+      ...isolation,
+      externals: ["effect"],
+      probe: { from: isolation.probe.from, to: { external: "effect" } },
+    };
+    expect(rulesFailingTheirProbe(compile([vacuous])).map((rule) => rule.name)).toEqual([
+      "domain-isolation",
+    ]);
   });
 });
 
@@ -255,8 +312,8 @@ describe("compileImportRules failures", () => {
 });
 
 describe("probe dependency kinds", () => {
-  // A probe states its target as a resolved path, so a rule that declares it is
-  // about externals but probes a repo file has a probe it can never satisfy.
+  // A path is a local target. A rule that declares it is about externals but
+  // probes a repo file has a probe it can never satisfy.
   it("fails a rule whose probe target is not the kind the rule is about", () => {
     const mismatched: ImportRule = {
       ...isolation,
@@ -270,12 +327,22 @@ describe("probe dependency kinds", () => {
   });
 });
 
-describe("kindOfPath", () => {
-  it.each([
-    ["node:crypto", "builtin"],
-    ["node_modules/effect/dist/index.js", "external"],
-    ["packages/server/src/server.ts", "local"],
-  ])("reads %s as %s", (path, kind) => {
-    expect(kindOfPath(path)).toBe(kind);
+describe("probeTargetOf", () => {
+  // The form is the kind. Nothing here knows how any language spells a path to
+  // a third-party package.
+  it("reads a path as local, and the two object forms as their kinds", () => {
+    expect(probeTargetOf("packages/server/src/server.ts")).toEqual({
+      path: "packages/server/src/server.ts",
+      kind: "local",
+    });
+    expect(probeTargetOf({ external: "@scope/name" })).toEqual({
+      path: "@scope/name",
+      kind: "external",
+      package: "@scope/name",
+    });
+    expect(probeTargetOf({ builtin: "node:crypto" })).toEqual({
+      path: "node:crypto",
+      kind: "builtin",
+    });
   });
 });

@@ -50,10 +50,15 @@ describe("makeModuleResolverLive", () => {
     );
   });
 
-  it("resolves an npm subpath into node_modules and marks it external", () => {
+  it("resolves an npm subpath into node_modules and marks it external, by package name", () => {
     const target = resolve(PLUGIN_FILE, "effect/Schema");
     expect(target.kind).toBe("external");
+    expect(target.package).toBe("effect");
     expect(target.path).toMatch(/node_modules\/effect\/dist\/Schema\.js$/);
+  });
+
+  it("does not report a package for a repository file", () => {
+    expect(resolve(PLUGIN_FILE, "./config-loader.js").package).toBeUndefined();
   });
 
   // A builtin is its own kind: a rule fencing off npm dependencies must not
@@ -76,5 +81,13 @@ describe("makeModuleResolverLive", () => {
     const target = resolve("website/src/content.config.ts", "@astrojs/starlight/loaders");
     expect(target.kind).toBe("external");
     expect(target.path).toMatch(/@astrojs\/starlight\/loaders\.ts$/);
+  });
+
+  // A scoped package is two path segments, and pnpm's store puts a second
+  // `node_modules/` in front of the real one.
+  it("names a scoped package by both segments, from the last node_modules on the path", () => {
+    expect(resolve("website/src/content.config.ts", "@astrojs/starlight/loaders").package).toBe(
+      "@astrojs/starlight",
+    );
   });
 });

@@ -116,8 +116,10 @@ export default {
     unrestricted: 0,
     partial: 0,
     // Every folder here is `layout: "open"`, so structure is 0% enumerated and
-    // states no floor. The rest are the numbers on the day they were written.
-    coverage: { imports: 1, members: 0.39, surface: 0.98, graph: 0.61 },
+    // states no floor. The rest are the numbers on the day they were written
+    // (members: 26/67 on 2026-09-04, after the language pack and the npm
+    // package helper joined infrastructure/, which no members rule selects).
+    coverage: { imports: 1, members: 0.38, surface: 0.98, graph: 0.61 },
   },
 
   // The shape of the whole graph — evaluated by `architecture check`, which

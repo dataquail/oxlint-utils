@@ -1,13 +1,12 @@
 import * as Result from "effect/Result";
 
-import type { ImportProbe, ImportRule } from "../domain/architecture-config.js";
+import type { ImportProbe, ImportProbeTarget, ImportRule } from "../domain/architecture-config.js";
 import type { ImportUnresolved, PatternInvalid } from "../domain/architecture-error.js";
 import type { Violation } from "../domain/violation.js";
-import type { DependencyKind, ModuleResolver } from "../ports/module-resolver.js";
+import type { DependencyKind, ModuleResolver, ResolvedTarget } from "../ports/module-resolver.js";
 import {
   compilePatterns,
   firstFromMatch,
-  kindOfPath,
   sourcesOf,
   targetAllowed,
   validateTargetPatterns,
@@ -23,6 +22,9 @@ export type CompiledImportRule = {
   // my own" without naming every module.
   readonly to: ReadonlyArray<string>;
   readonly toNot: ReadonlyArray<string>;
+  // Third-party packages the rule permits, by name. Judged before the path
+  // patterns, so where a language keeps its packages never reaches a rule.
+  readonly externals: ReadonlySet<string>;
   readonly dependencyKind: DependencyKind | null;
   readonly probe: ImportProbe;
 };
@@ -49,6 +51,7 @@ export const compileImportRule = (
     fromNot: fromNot.success,
     to: sourcesOf(rule.to),
     toNot: sourcesOf(rule.toNot),
+    externals: new Set(rule.externals ?? []),
     dependencyKind: rule.dependencyKind ?? null,
   });
 };
@@ -87,6 +90,21 @@ export const rulesSelecting = (
   return selected;
 };
 
+// Whether the rule reports this target. The kind comes from the resolver, an
+// external is judged by its package name, and only then do the path patterns
+// speak — so a rule never has to know where a language keeps its packages.
+const reports = (rule: CompiledImportRule, captures: RegExpExecArray, target: ResolvedTarget) => {
+  if (rule.dependencyKind !== null && rule.dependencyKind !== target.kind) return false;
+  if (
+    target.kind === "external" &&
+    target.package !== undefined &&
+    rule.externals.has(target.package)
+  ) {
+    return false;
+  }
+  return targetAllowed(rule, captures, target.path);
+};
+
 export const evaluateSelectedEdge = (
   selected: ReadonlyArray<SelectedRule>,
   resolver: ModuleResolver,
@@ -100,8 +118,7 @@ export const evaluateSelectedEdge = (
 
   const violations: Array<Violation> = [];
   for (const [rule, captures] of selected) {
-    if (rule.dependencyKind !== null && rule.dependencyKind !== target.kind) continue;
-    if (targetAllowed(rule, captures, target.path)) {
+    if (reports(rule, captures, target)) {
       violations.push({
         kind: "import",
         ruleName: rule.name,
@@ -122,6 +139,14 @@ export const evaluateImportEdge = (
 ): Result.Result<ReadonlyArray<Violation>, ImportUnresolved> =>
   evaluateSelectedEdge(rulesSelecting(rules, edge.importer), resolver, edge);
 
+// A probe states its target in one of three forms, and the form is the kind —
+// so the probe never has to know how a language spells an external's path.
+export const probeTargetOf = (to: ImportProbeTarget): ResolvedTarget => {
+  if (typeof to === "string") return { path: to, kind: "local" };
+  if ("external" in to) return { path: to.external, kind: "external", package: to.external };
+  return { path: to.builtin, kind: "builtin" };
+};
+
 // Every rule must report its own probe. A rule that does not is enforcing
 // nothing while still looking configured and still passing a clean lint run —
 // the one failure mode a linter cannot surface on its own.
@@ -131,8 +156,5 @@ export const rulesFailingTheirProbe = (
   rules.filter((rule) => {
     const captures = firstFromMatch(rule, rule.probe.from);
     if (captures === null) return true;
-    if (rule.dependencyKind !== null && rule.dependencyKind !== kindOfPath(rule.probe.to)) {
-      return true;
-    }
-    return !targetAllowed(rule, captures, rule.probe.to);
+    return !reports(rule, captures, probeTargetOf(rule.probe.to));
   });

@@ -163,6 +163,67 @@ describe("import policy scope", () => {
   });
 });
 
+describe("external", () => {
+  const lowered = lowerManifest(
+    base({
+      "@/domain/": {
+        imports: {
+          message: "domain/ reaches itself and the runtime.",
+          external: ["effect", "@scope/name"],
+          allow: ["@/domain/**"],
+        },
+        children: {
+          "*.root.ts": {},
+          "pure/": {
+            imports: { message: "no runtime here.", reset: true, allow: ["@/domain/pure/**"] },
+            children: { "*.ts": {} },
+          },
+          "adapters/": {
+            imports: { message: "and the driver.", external: ["pg"], allow: ["@/domain/**"] },
+            children: { "*.ts": {} },
+          },
+        },
+      },
+    }),
+  );
+
+  // The package is judged by its name and never by where the resolver found
+  // it, so lowering carries the names through untouched — no path pattern is
+  // written for an external.
+  it("carries package names onto the rule, not a path pattern", () => {
+    const rule = ruleNamed(lowered.imports, "domain/imports");
+    expect(rule.externals).toEqual(["effect", "@scope/name"]);
+    const toNot = (rule.toNot ?? []) as ReadonlyArray<string>;
+    expect(toNot.some((one) => one.includes("node_modules"))).toBe(false);
+  });
+
+  it("inherits and accumulates down the tree, and reset drops the inheritance", () => {
+    expect(ruleNamed(lowered.imports, "domain/adapters/imports").externals).toEqual([
+      "effect",
+      "@scope/name",
+      "pg",
+    ]);
+    expect(ruleNamed(lowered.imports, "domain/pure/imports").externals).toBeUndefined();
+  });
+
+  // A tier that names only its runtime has an allowlist — one that admits no
+  // repository file at all.
+  it("counts a node with externals and no allow as having an allowlist", () => {
+    const runtimeOnly = lowerManifest(
+      base({
+        "@/scripts/": {
+          layout: "open",
+          children: {},
+          imports: { message: "scripts reach only the runtime.", external: ["effect"] },
+        },
+      }),
+    );
+    const rule = ruleNamed(runtimeOnly.imports, "scripts/imports");
+    expect(rule.externals).toEqual(["effect"]);
+    expect(rule.toNot).toEqual([]);
+  });
+});
+
 describe("reset", () => {
   const lowered = lowerManifest(
     base({

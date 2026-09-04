@@ -343,6 +343,7 @@ export const explain = (policy: LoadedPolicy, file: string): Effect.Effect<void,
       ...allowlists.flatMap(([rule]) => [
         `    — ${rule.name}`,
         ...rule.toNot.map((pattern) => `        ${pattern}`),
+        ...[...rule.externals].map((name) => `        external: ${name}`),
       ]),
       "",
       "  may not import:",

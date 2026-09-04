@@ -55,11 +55,18 @@ exists to make impossible.
 
 ## Three kinds of target
 
-| Kind       | What it is                     | Which field governs it  |
-| ---------- | ------------------------------ | ----------------------- |
-| `local`    | a file inside the repository   | `imports.allow`, `deny` |
-| `external` | resolved under `node_modules/` | `imports.external`      |
-| `builtin`  | a Node builtin — `node:crypto` | neither                 |
+| Kind       | What it is                                   | Which field governs it  |
+| ---------- | -------------------------------------------- | ----------------------- |
+| `local`    | a file inside the repository                 | `imports.allow`, `deny` |
+| `external` | a third-party package, named by the resolver | `imports.external`      |
+| `builtin`  | a runtime builtin — `node:crypto`            | neither                 |
+
+An external is judged by its **package name** — the resolver reports which package a
+resolved file belongs to (`effect`, `@scope/name`), and `imports.external` is matched
+against that. Where the package was found on disk is the resolver's business: a pnpm store
+path, a hoisted `node_modules/`, or a vendored copy all read as the same package. `deny`
+and `allow` patterns still see the resolved path, so a prohibition against one subpath of
+a package is written against where that subpath resolves to.
 
 Builtins are resolved and classified rather than treated as unresolved packages, so
 `node:crypto` does not need an entry in every tier's `external` list to avoid a false
