@@ -93,10 +93,13 @@ bare names to `src` (`vitest.shared.ts`); `TEST_DIST=1` points them at `build/es
 its `./plugin` subpath). `packages/cli/build/esm/main.js` is the `architecture` bin. Both are in the
 `exports`/`bin` maps, so renaming or moving those source files is a breaking change.
 
-**The build must run before the lint.** oxlint imports JavaScript, so a stale `build/` enforces a stale
-policy while still linting green. Two things close that: the `lint` script builds first, and
-`nx.json`'s `targetDefaults.lint` declares `dependsOn: ["build"]` so the Nx graph cannot order them the
-other way.
+**The plugin must be built before any lint.** oxlint imports JavaScript, so a stale `build/` enforces a
+stale policy while still linting green, and a missing one fails every package's lint with "Failed to
+load JS plugin". Two things close that: the `lint` script builds every package first, and `nx.json`'s
+`targetDefaults.lint` declares `dependsOn: ["build", { projects: ["@goodbones/oxlint"], target:
+"build" }]`, so linting `core` on a clean checkout builds the plugin (and, through `^build`, the core
+and the pack) before oxlint starts. Depending on a project's own build alone is what passed locally
+and failed in CI.
 
 **`tsconfig.resolve.json` is not part of any build.** It exists so the architecture plugin can resolve
 specifiers, and it mirrors `tsconfig.base.json`'s `paths` _without_ the trailing extension those carry —

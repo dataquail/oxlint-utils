@@ -35,7 +35,7 @@
       }
     },
     "lint": {
-      "dependsOn": ["build"]
+      "dependsOn": ["build", { "projects": ["@goodbones/oxlint"], "target": "build" }]
     }
   },
   "release": {
