@@ -48,6 +48,7 @@ import { makeModuleResolverLive } from "../../infrastructure/module-resolver-liv
 import { type LoweredRules, lowerManifest } from "../../manifest/compile.js";
 import { decodeManifest, type Manifest } from "../../manifest/manifest.js";
 import type { FileSystem } from "../../ports/file-system.js";
+import type { Language } from "../../ports/language.js";
 import type { ModuleResolver } from "../../ports/module-resolver.js";
 
 export type LoadedPolicy = {
@@ -63,6 +64,9 @@ export type LoadedPolicy = {
   readonly adoption: LoweredRules["adoption"];
   readonly structure: CompiledStructure;
   readonly fileSystem: FileSystem;
+  // The language packs this policy is evaluated with. The walker takes its
+  // extensions from them, and lowering the shape of its probes.
+  readonly languages: ReadonlyArray<Language>;
   // Violations this repository is carrying while it adopts the policy. Applied
   // at report time so a baselined finding costs nothing but a line in a file.
   readonly baseline: BaselineFilter;
@@ -107,7 +111,8 @@ export const loadPolicy = async (
   // The manifest is the authoring surface; these flat rules are the machine's.
   // The languages tell lowering what a source file in each scope is called, so
   // a synthetic probe is a file of the scope's language.
-  const rules = lowerManifest(config, [typescriptLanguage()]);
+  const languages = [typescriptLanguage()];
+  const rules = lowerManifest(config, languages);
 
   // The ceilings. A tier that says "not tightened yet" is a sentence someone
   // wrote; a ceiling on how many may say so is what keeps the backlog from
@@ -195,6 +200,7 @@ export const loadPolicy = async (
     adoption: rules.adoption,
     structure: structure.success,
     fileSystem: makeFileSystemLive(repoRoot),
+    languages,
     baseline: makeBaselineFilter(
       config.baseline === undefined ? EMPTY_BASELINE : readBaselineAt(repoRoot, config.baseline),
     ),

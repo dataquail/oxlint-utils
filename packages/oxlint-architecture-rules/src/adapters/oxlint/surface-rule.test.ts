@@ -83,6 +83,7 @@ const policy = (): LoadedPolicy => {
     adoption: { unrestricted: [], partial: [] },
     structure: EMPTY_STRUCTURE,
     fileSystem: makeFileSystemFake([]),
+    languages: [],
     resolver: makeModuleResolverFake({}),
     ignoreUnresolved: [],
     notices: [],

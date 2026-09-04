@@ -53,6 +53,7 @@ const makePolicy = (): LoadedPolicy => {
     graph: EMPTY_GRAPH_RULES,
     adoption: { unrestricted: [], partial: [] },
     fileSystem: makeFileSystemFake([]),
+    languages: [],
     resolver: makeModuleResolverFake({
       "@org/database": "packages/database/src/index.ts",
       "@org/contracts/Policy": "packages/contracts/src/Policy.ts",

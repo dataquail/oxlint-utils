@@ -13,8 +13,10 @@ architecture explain <file>      # what governs this file, and why
 architecture facts <file>        # what the parser read out of this file
 ```
 
-`roots` are directories to walk, defaulting to `packages`. The walker skips `.d.ts` files
-and the usual build output — `node_modules`, `build`, `dist`, `.next`, `coverage`.
+`roots` are directories to walk, defaulting to `packages`. The walker visits the source files
+of the languages the policy's scopes name — for TypeScript, `.ts`, `.tsx`, `.mts` and `.cts`,
+skipping declaration files — and steps over the folders no policy is written about:
+`node_modules`, `build`, `dist`, `.next`, `coverage`.
 
 ## Why a second adapter
 

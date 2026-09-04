@@ -22,10 +22,10 @@ import { evaluateStructure, requiredSiblingsOf } from "../../core/structure.js";
 import { evaluateSurface, surfaceRulesSelecting } from "../../core/surface.js";
 import type { SourceFacts } from "../../domain/facts.js";
 import { fingerprintOf, formatMessage, type Violation } from "../../domain/violation.js";
+import { listSourceFiles } from "../../infrastructure/walk.js";
 import { type LoadedPolicy, loadPolicy } from "../oxlint/config-loader.js";
 import { buildGraph } from "./graph.js";
 import { sourceFactsOf } from "./source-facts.js";
-import { listSourceFiles } from "./source-files.js";
 
 // The policy, run with no linter in the loop.
 //
@@ -50,7 +50,7 @@ export type Findings = {
 };
 
 export const collectFindings = (policy: LoadedPolicy, roots: ReadonlyArray<string>): Findings => {
-  const files = listSourceFiles(policy.repoRoot, roots);
+  const files = listSourceFiles(policy.repoRoot, roots, policy.languages);
   const violations: Array<Violation> = [];
   const unresolved: Array<string> = [];
 
@@ -193,7 +193,10 @@ export const check = (
     const shortfalls =
       floors === undefined
         ? []
-        : coverageShortfalls(coverageOf(policy, listSourceFiles(policy.repoRoot, roots)), floors);
+        : coverageShortfalls(
+            coverageOf(policy, listSourceFiles(policy.repoRoot, roots, policy.languages)),
+            floors,
+          );
     if (shortfalls.length > 0) {
       yield* report([
         "",
@@ -222,7 +225,7 @@ export const coverage = (
   roots: ReadonlyArray<string>,
 ): Effect.Effect<void, CliFailure> =>
   Effect.gen(function* () {
-    const files = listSourceFiles(policy.repoRoot, roots);
+    const files = listSourceFiles(policy.repoRoot, roots, policy.languages);
     const found = coverageOf(policy, files);
     const fractions = fractionsOf(found);
     const floors = policy.config.limits?.coverage ?? {};

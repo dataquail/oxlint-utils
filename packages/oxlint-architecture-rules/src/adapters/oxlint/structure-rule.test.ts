@@ -69,6 +69,7 @@ const policy = (present: ReadonlyArray<string>): LoadedPolicy => {
     adoption: { unrestricted: [], partial: [] },
     structure: structure.success,
     fileSystem: makeFileSystemFake(present),
+    languages: [],
     resolver: makeModuleResolverFake({}),
     ignoreUnresolved: [],
     notices: [],
