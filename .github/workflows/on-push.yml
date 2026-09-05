@@ -110,10 +110,38 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # A package that has never been through First Publish is `private: true`.
+      # `nx release` only excludes private packages when `release.projects` is
+      # left to its default, and nx.json sets it to `packages/*` — so left alone,
+      # the first `feat:` commit touching a private package would tag it, cut a
+      # GitHub release for it, and hand publish.yml a package npm refuses. Nothing
+      # is released until at least one package has been made public on purpose.
+      - name: Find packages that are public
+        id: publishable
+        run: |
+          public=$(node -e '
+            const fs = require("fs");
+            const names = fs.readdirSync("packages")
+              .map((d) => `packages/${d}/package.json`)
+              .filter((f) => fs.existsSync(f))
+              .map((f) => JSON.parse(fs.readFileSync(f, "utf8")))
+              .filter((p) => p.private !== true)
+              .map((p) => p.name);
+            console.log(names.join(" "));
+          ')
+          echo "packages=${public}" >> "$GITHUB_OUTPUT"
+          if [ -z "$public" ]; then
+            echo "Every package under packages/ is private; nothing to release."
+          else
+            echo "Public packages: $public"
+          fi
+
       - name: Build all packages for release
+        if: steps.publishable.outputs.packages != ''
         run: pnpm exec nx run-many -t build --projects='packages/*'
 
       - name: Run nx release
+        if: steps.publishable.outputs.packages != ''
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |

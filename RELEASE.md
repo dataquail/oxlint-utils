@@ -8,10 +8,14 @@ version on publish.
 
 ## Packages that have not been published yet
 
-All four packages are `private: true`. `nx release` excludes a private package from versioning and
-publishing, so nothing on `main` can tag or publish one by accident before its name and npm scope are
-settled. Publishing one for the first time is a deliberate commit that removes `private` for that
-package, followed by the **First Publish** workflow below. Do it in dependency order — `core`, then
+All four packages are `private: true`, and `on-push.yml` skips `nx release` entirely while no package
+under `packages/` is public. That step exists because `nx release` only excludes private packages when
+`release.projects` is left to its default, and `nx.json` sets it to `packages/*` — without the guard,
+the first `feat:` commit on `main` would tag the private packages, cut GitHub releases for them, and
+hand `publish.yml` packages npm refuses. Publishing one for the first time is a deliberate commit that
+removes `private` for that package, followed by the **First Publish** workflow below; from then on the
+normal path applies to it (and `nx release` will still version the remaining private ones — make them
+public in the same order, promptly, or narrow `release.projects` meanwhile). Do it in dependency order — `core`, then
 `typescript`, then `cli` and `oxlint` — so a released package never depends on an unreleased one.
 The old `oxlint-architecture-rules` name has one beta on the registry; deprecate it with a message
 pointing at `@goodbones/oxlint` and `@goodbones/cli` once those exist.

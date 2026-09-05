@@ -197,10 +197,11 @@ release; creating that release triggers the npm publish from `packages/<name>` (
 subdirectory — the manifest's `files` is what narrows the tarball). `updateDependents: auto` bumps
 `cli` and `oxlint` when `core` or `typescript` changes. See `RELEASE.md`.
 
-**The four packages are `private: true` until they have been through First Publish.** `nx release`
-excludes private packages, which is what stops the first `feat:` commit on `main` from tagging and
-publishing them under a name that has not been settled. Flip `private` in the first-publish commit,
-one package at a time in dependency order (`core`, `typescript`, then `cli` and `oxlint`).
+**The four packages are `private: true` until they have been through First Publish, and
+`on-push.yml` skips `nx release` while every package is private.** Nx only excludes private packages
+from a release when `release.projects` is unset; ours is `packages/*`, so the workflow step is the
+guard, not the flag. Flip `private` in the first-publish commit, one package at a time in dependency
+order (`core`, `typescript`, then `cli` and `oxlint`).
 
 **A package that has never been released does not go through that path.** It has no git tag and no
 registry version to derive from, so it is bootstrapped by the **First Publish** workflow
