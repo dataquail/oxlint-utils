@@ -8,16 +8,21 @@ version on publish.
 
 ## Packages that have not been published yet
 
-All four packages are `private: true`, and `on-push.yml` skips `nx release` entirely while no package
-under `packages/` is public. That step exists because `nx release` only excludes private packages when
-`release.projects` is left to its default, and `nx.json` sets it to `packages/*` — without the guard,
-the first `feat:` commit on `main` would tag the private packages, cut GitHub releases for them, and
-hand `publish.yml` packages npm refuses. Publishing one for the first time is a deliberate commit that
-removes `private` for that package, followed by the **First Publish** workflow below; from then on the
-normal path applies to it (and `nx release` will still version the remaining private ones — make them
-public in the same order, promptly, or narrow `release.projects` meanwhile). Do it in dependency order — `core`, then
-`typescript`, then `cli` and `oxlint` — so a released package never depends on an unreleased one.
-The old `oxlint-architecture-rules` name has one beta on the registry; deprecate it with a message
+`on-push.yml` releases only the packages the registry already knows: its release job asks npm about
+each package under `packages/` and passes the ones that exist to `nx release --projects`. A package
+that has never been published is skipped there, and a private one too, so nothing lands on the registry
+before someone has run the **First Publish** workflow below and read its dry run. (`nx.json` sets
+`release.projects` explicitly, which turns off nx's own exclusion of private packages, and
+`fallbackCurrentVersionResolver: "disk"` would otherwise let the first `feat:` commit release a brand-new
+package with no one looking.)
+
+**Publish a dependency together with its unreleased dependents.** `updateDependents: auto` means
+versioning `@goodbones/core` also versions `typescript`, `cli` and `oxlint`; an unreleased dependent
+gets a plain patch bump, which turns `0.1.0-beta.0` into a stable `0.1.0`, tagged and never published.
+The First Publish preflight refuses that; name every package in the set —
+`@goodbones/core, @goodbones/typescript, @goodbones/cli, @goodbones/oxlint` — in one run.
+
+The old `oxlint-architecture-rules` name has betas on the registry; deprecate it with a message
 pointing at `@goodbones/oxlint` and `@goodbones/cli` once those exist.
 
 ## Prerequisites

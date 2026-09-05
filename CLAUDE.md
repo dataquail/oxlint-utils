@@ -20,9 +20,8 @@ all under `packages/`:
   is evaluated.
 - **`@goodbones/oxlint`** (`packages/oxlint`) — the plugin: five oxlint rules over the same manifest.
 
-Both hosts depend on the core and the pack and never on each other. The four are `private: true`
-until the brand and npm scope exist (see Releasing). `website/` is an Astro + Starlight docs site
-deployed to GitHub Pages at <https://dataquail.github.io/oxlint-utils>.
+Both hosts depend on the core and the pack and never on each other. `website/` is an Astro + Starlight
+docs site deployed to GitHub Pages at <https://dataquail.github.io/oxlint-utils>.
 
 **The repository enforces its own architecture with the packages it publishes.**
 `architecture.config.mjs` at the root is a real policy over `packages/`, wired into `.oxlintrc.json` as
@@ -197,11 +196,11 @@ release; creating that release triggers the npm publish from `packages/<name>` (
 subdirectory — the manifest's `files` is what narrows the tarball). `updateDependents: auto` bumps
 `cli` and `oxlint` when `core` or `typescript` changes. See `RELEASE.md`.
 
-**The four packages are `private: true` until they have been through First Publish, and
-`on-push.yml` skips `nx release` while every package is private.** Nx only excludes private packages
-from a release when `release.projects` is unset; ours is `packages/*`, so the workflow step is the
-guard, not the flag. Flip `private` in the first-publish commit, one package at a time in dependency
-order (`core`, `typescript`, then `cli` and `oxlint`).
+**`main` releases only packages the registry already knows.** The release job asks npm about each
+package and passes the existing ones to `nx release --projects`; a never-published package goes through
+First Publish, deliberately. And `updateDependents: auto` versions a package's dependents with it — an
+unreleased dependent gets a stable patch bump and a tag with no publish — so a first publish names the
+whole set (`core`, `typescript`, `cli`, `oxlint`) in one run; the preflight refuses otherwise.
 
 **A package that has never been released does not go through that path.** It has no git tag and no
 registry version to derive from, so it is bootstrapped by the **First Publish** workflow

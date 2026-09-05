@@ -110,41 +110,43 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # A package that has never been through First Publish is `private: true`.
-      # `nx release` only excludes private packages when `release.projects` is
-      # left to its default, and nx.json sets it to `packages/*` — so left alone,
-      # the first `feat:` commit touching a private package would tag it, cut a
-      # GitHub release for it, and hand publish.yml a package npm refuses. Nothing
-      # is released until at least one package has been made public on purpose.
-      - name: Find packages that are public
-        id: publishable
+      # This path releases packages the registry already knows. A package that
+      # has never been published goes through the First Publish workflow, on
+      # purpose and with a dry run first — `fallbackCurrentVersionResolver:
+      # "disk"` would otherwise let the first `feat:` commit touching a new
+      # package version, tag and release it with no one having looked at the
+      # tarball. Private packages are out for the same reason `nx release`
+      # would exclude them by default: `release.projects` is set explicitly
+      # here, which turns that default off.
+      - name: Find the packages the registry already knows
+        id: releasable
         run: |
-          public=$(node -e '
-            const fs = require("fs");
-            const names = fs.readdirSync("packages")
-              .map((d) => `packages/${d}/package.json`)
-              .filter((f) => fs.existsSync(f))
-              .map((f) => JSON.parse(fs.readFileSync(f, "utf8")))
-              .filter((p) => p.private !== true)
-              .map((p) => p.name);
-            console.log(names.join(" "));
-          ')
-          echo "packages=${public}" >> "$GITHUB_OUTPUT"
-          if [ -z "$public" ]; then
-            echo "Every package under packages/ is private; nothing to release."
-          else
-            echo "Public packages: $public"
-          fi
+          releasable=""
+          for manifest in packages/*/package.json; do
+            [ -f "$manifest" ] || continue
+            name=$(node -p "JSON.parse(require('fs').readFileSync('$manifest','utf8')).name")
+            private=$(node -p "JSON.parse(require('fs').readFileSync('$manifest','utf8')).private === true")
+            if [ "$private" = "true" ]; then
+              echo "  - $name is private; skipped"
+            elif npm view "$name" version >/dev/null 2>&1; then
+              echo "  - $name is on the registry; releasable"
+              releasable="${releasable:+$releasable,}$name"
+            else
+              echo "  - $name has never been published; skipped (use the First Publish workflow)"
+            fi
+          done
+          echo "projects=${releasable}" >> "$GITHUB_OUTPUT"
+          [ -n "$releasable" ] || echo "Nothing to release."
 
       - name: Build all packages for release
-        if: steps.publishable.outputs.packages != ''
+        if: steps.releasable.outputs.projects != ''
         run: pnpm exec nx run-many -t build --projects='packages/*'
 
       - name: Run nx release
-        if: steps.publishable.outputs.packages != ''
+        if: steps.releasable.outputs.projects != ''
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           git config user.name github-actions
           git config user.email github-actions@github.com
-          npx nx release --skip-publish
+          npx nx release --skip-publish --projects="${{ steps.releasable.outputs.projects }}"

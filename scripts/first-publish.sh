@@ -93,6 +93,17 @@ for requested in "${REQUESTED[@]}"; do
 
   version=$(node -p "JSON.parse(require('fs').readFileSync('$directory/package.json','utf8')).version")
 
+  # A private package gets no publish target: `nx release` would still version
+  # and tag it, and only then refuse to publish — which leaves a tag and a
+  # GitHub release for a version that never reached the registry. Refuse first.
+  if [ "$(node -p "JSON.parse(require('fs').readFileSync('$directory/package.json','utf8')).private === true")" = "true" ]; then
+    echo "  ❌ $requested — is \"private\": true in $directory/package.json."
+    echo "     npm will not publish a private package, and nx would version and tag it"
+    echo "     before finding that out. Remove the flag in a commit on main first."
+    FAILED=1
+    continue
+  fi
+
   # Already on the registry: this is not a first publish, and running `nx
   # release` here would cut a second version for a package the normal flow
   # already owns.
@@ -124,6 +135,33 @@ for requested in "${REQUESTED[@]}"; do
   echo "  ✅ $requested — not on the registry, no release tags, will publish from $directory (currently $version)"
   TARGETS+=("$requested")
 done
+
+# `updateDependents: "auto"` means versioning one package also versions every
+# workspace package that depends on it — and a dependent that has never been
+# released gets a plain patch bump, which turns 0.1.0-beta.0 into a stable
+# 0.1.0, tagged, with no preid and no publish. That is what happened the first
+# time this ran for @goodbones/core alone. So a first publish has to name every
+# unreleased dependent of what it publishes, and they all go out together.
+if [ "$FAILED" -eq 0 ]; then
+  for manifest in packages/*/package.json; do
+    [ -f "$manifest" ] || continue
+    name=$(node -p "JSON.parse(require('fs').readFileSync('$manifest','utf8')).name")
+    case " ${TARGETS[*]} " in *" $name "*) continue ;; esac
+    depends_on_target=$(node -p "
+      const p = JSON.parse(require('fs').readFileSync('$manifest','utf8'));
+      const deps = Object.keys({ ...p.dependencies, ...p.peerDependencies });
+      const targets = '${TARGETS[*]}'.split(' ');
+      deps.filter((d) => targets.includes(d)).join(', ')")
+    [ -n "$depends_on_target" ] || continue
+    if npm view "$name" version --registry "$REGISTRY" >/dev/null 2>&1; then
+      continue
+    fi
+    echo "  ❌ $name — depends on $depends_on_target, has never been released, and is not in this run."
+    echo "     nx would version it alongside (updateDependents) as a stable patch bump and tag it"
+    echo "     without publishing. Add it to PACKAGES so the whole set goes out together."
+    FAILED=1
+  done
+fi
 
 echo
 
