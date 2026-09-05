@@ -21,7 +21,7 @@ all under `packages/`:
 - **`@goodbones/oxlint`** (`packages/oxlint`) — the plugin: five oxlint rules over the same manifest.
 
 Both hosts depend on the core and the pack and never on each other. `website/` is an Astro + Starlight
-docs site deployed to GitHub Pages at <https://dataquail.github.io/oxlint-utils>.
+docs site deployed to GitHub Pages at <https://dataquail.github.io/goodbones>.
 
 **The repository enforces its own architecture with the packages it publishes.**
 `architecture.config.mjs` at the root is a real policy over `packages/`, wired into `.oxlintrc.json` as

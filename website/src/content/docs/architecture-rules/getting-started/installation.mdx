@@ -41,7 +41,7 @@ specifier and its five rules are enabled by id:
 `import/no-cycle` is oxlint's own, and it owns the one check a per-file rule cannot make.
 
 The plugin reads `architecture.config.mjs` from the repository root at module load, which
-is also when it runs the [probe check](/oxlint-utils/architecture-rules/enforcement/probes/). A
+is also when it runs the [probe check](/goodbones/architecture-rules/enforcement/probes/). A
 malformed manifest or a vacuous rule fails there, loudly, rather than lowering to a policy
 that matches nothing.
 
@@ -94,7 +94,7 @@ rm src/domain/probe.ts
 
 This is the habit the whole package is built around, and it is automated two ways: the
 plugin's own load-time probe check, and the
-[`architecture` CLI](/oxlint-utils/architecture-rules/enforcement/cli/).
+[`architecture` CLI](/goodbones/architecture-rules/enforcement/cli/).
 
 ## Build before you lint
 

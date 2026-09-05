@@ -35,7 +35,7 @@ one file at a time.
 
 ## Graph rules
 
-The [`graph`](/oxlint-utils/architecture-rules/manifest/graph/) family — cycles, orphans, what a
+The [`graph`](/goodbones/architecture-rules/manifest/graph/) family — cycles, orphans, what a
 tier may reach through any number of hops — is **evaluated by the CLI only**. The plugin sees
 one file at a time and has no view of the others; "does anything import this?" is not a
 question it can ask. Both adapters still compile and probe graph rules at load, so a vacuous
@@ -48,7 +48,7 @@ and every file is parsed once whether the per-file families or the graph pass as
 
 ## Graph rules
 
-The [`graph`](/oxlint-utils/architecture-rules/manifest/graph/) family — cycles, orphans, what a
+The [`graph`](/goodbones/architecture-rules/manifest/graph/) family — cycles, orphans, what a
 tier may reach through any number of hops — is **evaluated by the CLI only**. The plugin sees
 one file at a time and has no view of the others; "does anything import this?" is not a
 question it can ask. Both adapters still compile and probe graph rules at load, so a vacuous
@@ -83,7 +83,7 @@ the manifest — so the sentence that caused it is found by reading down the sam
 
 How much of the tree the policy reaches, per family, with the tiers that said "not tightened
 yet" beneath. `check` compares the same numbers against any floors the manifest states in
-`limits.coverage`. See [Adoption](/oxlint-utils/architecture-rules/enforcement/adoption/).
+`limits.coverage`. See [Adoption](/goodbones/architecture-rules/enforcement/adoption/).
 
 ## `explain`
 
@@ -123,7 +123,7 @@ select it. `facts` is the other half: what those rules are evaluated against.
 
 The allowlist is shown as compiled regular expressions rather than as the globs you wrote,
 because what is in force after inheritance is not any single line of the manifest. `$1` is a
-[capture](/oxlint-utils/architecture-rules/manifest/patterns/) resolved from this file's own path —
+[capture](/goodbones/architecture-rules/manifest/patterns/) resolved from this file's own path —
 the rule says _this module's own domain_, not any module's.
 
 When a rule seems to be firing too much or not at all, this is the first thing to run.

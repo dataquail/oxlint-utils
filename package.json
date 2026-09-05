@@ -1,10 +1,10 @@
 {
-  "name": "oxlint-utils-source",
+  "name": "goodbones-source",
   "version": "0.0.0",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/dataquail/oxlint-utils.git"
+    "url": "https://github.com/dataquail/goodbones.git"
   },
   "packageManager": "pnpm@10.33.0",
   "type": "module",
@@ -34,9 +34,9 @@
     "precommit": "nx run-many -t lint test check",
     "prettier": "prettier --ignore-unknown '**/*'",
     "prettier:write": "pnpm run prettier --write",
-    "dev:website": "pnpm --filter @oxlint-utils/website dev",
-    "build:website": "pnpm --filter @oxlint-utils/website build",
-    "preview:website": "pnpm --filter @oxlint-utils/website preview",
+    "dev:website": "pnpm --filter @goodbones/website dev",
+    "build:website": "pnpm --filter @goodbones/website build",
+    "preview:website": "pnpm --filter @goodbones/website preview",
     "troubleshoot:ci": "act -W .github/workflows/ci.yml workflow_dispatch",
     "prepare": "husky && effect-tsgo patch --oxlint",
     "inject-token": "bash .devcontainer/inject-token.sh",

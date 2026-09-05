@@ -32,10 +32,10 @@ families.
 | Can this tier reach that one, by any route?    | `graph`     |
 
 The first five are evaluated by the oxlint plugin and the CLI alike. `graph` is a question
-about the whole repository, and only the [CLI](/oxlint-utils/architecture-rules/enforcement/cli/)
+about the whole repository, and only the [CLI](/goodbones/architecture-rules/enforcement/cli/)
 sees every file at once. Above the families sit two ratchets on the policy itself — the
-[baseline](/oxlint-utils/architecture-rules/enforcement/baseline/) on the violations the code
-carries, and [`limits`](/oxlint-utils/architecture-rules/enforcement/adoption/) on how much of
+[baseline](/goodbones/architecture-rules/enforcement/baseline/) on the violations the code
+carries, and [`limits`](/goodbones/architecture-rules/enforcement/adoption/) on how much of
 the tree the rules reach.
 
 ## The two properties everything rests on
@@ -86,7 +86,7 @@ says about a folder is written at that folder:
 
 The trade is real and worth naming: a tree answers _"what governs this file?"_ well and
 _"which files does this rule govern?"_ badly. That is what
-[`architecture explain`](/oxlint-utils/architecture-rules/enforcement/cli/) exists for.
+[`architecture explain`](/goodbones/architecture-rules/enforcement/cli/) exists for.
 
 ## What it does not do
 

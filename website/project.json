@@ -1,5 +1,5 @@
 {
-  "name": "@oxlint-utils/website",
+  "name": "@goodbones/website",
   "$schema": "../node_modules/nx/schemas/project-schema.json",
   "sourceRoot": "website/src",
   "projectType": "application",

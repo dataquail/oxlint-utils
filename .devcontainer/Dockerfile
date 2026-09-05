@@ -67,7 +67,7 @@ RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/
 
 RUN echo 'export PATH="/home/node/.local/bin:$PATH"' >> ~/.zshrc && \
   curl -fsSL https://claude.ai/install.sh | bash && \
-  echo 'cd /workspace/oxlint-utils 2>/dev/null' >> ~/.zshrc && \
+  echo 'cd /workspace/goodbones 2>/dev/null' >> ~/.zshrc && \
   echo 'alias cc="claude --dangerously-skip-permissions"' >> ~/.zshrc
 
 # Post-create script to seed Claude config after volumes are mounted

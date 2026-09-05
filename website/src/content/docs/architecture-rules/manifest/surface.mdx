@@ -4,7 +4,7 @@ description: Constraining what a file may export — no default exports, a barre
 ---
 
 `surface` restricts what a file **offers**: the names it exports, what they were declared as,
-and how many there are. It is the other half of [`exports`](/oxlint-utils/architecture-rules/manifest/exports/),
+and how many there are. It is the other half of [`exports`](/goodbones/architecture-rules/manifest/exports/),
 which says who may _import_ a name; this says what a file may _export_ in the first place. No
 module resolution is involved, so it is as cheap as `members`.
 
@@ -92,7 +92,7 @@ theirs something different.
 ```
 
 **No `export *`.** A star re-export takes every export of the target at once, and is how a
-name restricted by [`exports`](/oxlint-utils/architecture-rules/manifest/exports/) gets laundered
+name restricted by [`exports`](/goodbones/architecture-rules/manifest/exports/) gets laundered
 through a barrel. That family can forbid it from the import side; this one forbids it where
 it is written, with no resolution needed.
 
@@ -110,7 +110,7 @@ surface: [{ message: "Re-export by name, so the barrel says what the module is."
 
 ## Probes
 
-A `surface` rule's generated [probe](/oxlint-utils/architecture-rules/enforcement/probes/) is a
+A `surface` rule's generated [probe](/goodbones/architecture-rules/enforcement/probes/) is a
 whole surface — one site the rule must reject, or for `count`, a surface of the wrong size.
 A `count` with neither `min` nor `max` is refused at load, since nothing could violate it.
 
