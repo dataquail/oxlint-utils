@@ -6,13 +6,11 @@ description: Stating who may reach a part of the tree, from the part of the tree
 `importedBy` is the inbound direction: instead of _"what may this file reach"_, it says
 _"who may reach this file"_.
 
-```js
-"*.repository.ts": {
-  importedBy: {
-    message: "A repository is reached from a command handler, not from a query.",
-    allow: ["@/modules/*/commands/**", "@/modules/*/event-handlers/**"],
-  },
-},
+```yaml
+"*.repository.ts":
+  importedBy:
+    message: "A repository is reached from a command handler, not from a query."
+    allow: ["@/modules/*/commands/**", "@/modules/*/event-handlers/**"]
 ```
 
 Any file outside that allowlist that imports a `*.repository.ts` is a violation, reported
@@ -45,14 +43,12 @@ relative to this node's own folder, and the module barrel is the canonical case:
 private except through its `index.ts`, so the restriction covers the whole module and exempts
 that one file.
 
-```js
-"@/modules/{module}/": {
-  importedBy: {
-    message: "A module is private. Cross-module access goes through its barrel.",
-    allow: ["@/modules/**", "**/*.test.ts"],
-    matchNot: ["index.ts"],
-  },
-},
+```yaml
+"@/modules/{module}/":
+  importedBy:
+    message: "A module is private. Cross-module access goes through its barrel."
+    allow: ["@/modules/**", "**/*.test.ts"]
+    matchNot: [index.ts]
 ```
 
 ## Captures are refused here

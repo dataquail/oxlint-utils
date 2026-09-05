@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 An Nx + pnpm monorepo publishing architecture-policy tooling: a policy written as one manifest of
-the repository (`architecture.config.mjs`), enforced by an oxlint plugin and a CLI. Four packages,
+the repository (`architecture.yaml`), enforced by an oxlint plugin and a CLI. Four packages,
 all under `packages/`:
 
 - **`@goodbones/core`** (`packages/core`) — the manifest schema, the evaluators for the five
@@ -24,7 +24,7 @@ Both hosts depend on the core and the pack and never on each other. `website/` i
 docs site deployed to GitHub Pages at <https://dataquail.github.io/goodbones>.
 
 **The repository enforces its own architecture with the packages it publishes.**
-`architecture.config.mjs` at the root is a real policy over `packages/`, wired into `.oxlintrc.json` as
+`architecture.yaml` at the root is a real policy over `packages/`, wired into `.oxlintrc.json` as
 the `architecture` JS plugin, so `pnpm lint` fails on a layering violation. That makes the policy the
 packages' largest test: a change that breaks lowering or resolution breaks the lint run here first.
 Every family is in it, deliberately — `imports` and `structure` for the layering, `members` for
@@ -105,13 +105,23 @@ specifiers, and it mirrors `tsconfig.base.json`'s `paths` _without_ the trailing
 a mapped target is a template, so a `.ts`-suffixed mapping would make `pkg/x.js` look for `x.js.ts`.
 Changing `paths` in one file and not the other is how rules silently stop resolving.
 
-**Adding a layer means adding a node to `architecture.config.mjs`, and so does adding a package.** A
+**Adding a layer means adding a node to `architecture.yaml`, and so does adding a package.** A
 new folder under a `src/` that no node governs trips the taxonomy-root catch-all rather than being
 quietly unpoliced; a new package under `packages/` is a new `~/<name>/` node with its own import
 allowlist, plus a `paths` pair in `tsconfig.base.json` and `tsconfig.resolve.json`, an entry in
 `vitest.workspace.ts`, and a reference in the root `tsconfig.json` and `tsconfig.build.json`. Before
 trusting a rule you just wrote, plant the violation it exists to catch and watch `pnpm lint` fail — the
 probe check proves a rule _can_ fire, not that it fires on what you meant.
+
+**The manifest is a data file, and `packages/core/schema/architecture.schema.json` is generated from
+its codec.** `readManifestFile` reads `architecture.yaml`/`.yml`/`.json` through the `yaml` parser
+(YAML 1.2 core schema, merge keys on, unknown tags refused) and `.mjs` through `import()`; both
+hosts discover the file by name in that order and refuse a repository holding two. `defs`/`use`
+are expanded on the raw value before decoding (`manifest/expand.ts`), so they work in every form.
+The JSON Schema is emitted by `pnpm run schema:manifest` and `manifest/json-schema.test.ts` fails
+when the committed file is behind the codec — so a change to the manifest schema is followed by
+regenerating it, and the docs site copies it to `/schema/` at build. Decode errors name a line
+through the locator the YAML reader hands `loadPolicy`; a module manifest gets the path only.
 
 **Imports use explicit `.js` extensions.** `moduleResolution` is `NodeNext` and the package is ESM —
 `import { x } from "./thing.js"` referring to `thing.ts` is correct, not a mistake to "fix".

@@ -62,7 +62,7 @@ pnpm exec nx affected -t test
 
 ## The repository lints itself
 
-`architecture.config.mjs` at the root is a real policy over `packages/`, enforced by the plugin this
+`architecture.yaml` at the root is a real policy over `packages/`, enforced by the plugin this
 repository publishes and wired into `.oxlintrc.json`. `pnpm lint` therefore fails on a layering
 violation — a `domain/` file reaching an adapter, a `core/` evaluator reaching a live implementation,
 the core reaching the TypeScript pack, one host reaching the other — and the policy doubles as the

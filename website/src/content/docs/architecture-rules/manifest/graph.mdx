@@ -10,35 +10,25 @@ hops. No single file can answer those, and a rule about one edge cannot: a barre
 between an adapter and a live implementation satisfies every per-edge allowlist and still
 puts the adapter one `import` away from the thing it was never supposed to touch.
 
-```js
-graph: {
-  cycles: [
-    {
-      name: "no-cycles",
-      message: "These files import each other, directly or through others.",
-      within: "packages/*/src/**",
-      withinNot: "**/*.test.ts",
-    },
-  ],
-  orphans: [
-    {
-      name: "no-dead-modules",
-      message: "Nothing imports this file. Register it, or delete it.",
-      within: "packages/*/src/**",
-      withinNot: "**/*.test.ts",
-      entry: ["packages/*/src/index.ts", "packages/*/src/main.ts"],
-    },
-  ],
-  reach: [
-    {
-      name: "adapters-through-ports",
-      message: "An adapter reaches infrastructure only through a port.",
-      from: "packages/*/src/adapters/**",
-      to: "packages/*/src/infrastructure/**",
-      via: "packages/*/src/ports/**",
-    },
-  ],
-},
+```yaml
+graph:
+  cycles:
+    - name: no-cycles
+      message: "These files import each other, directly or through others."
+      within: "packages/*/src/**"
+      withinNot: "**/*.test.ts"
+  orphans:
+    - name: no-dead-modules
+      message: "Nothing imports this file. Register it, or delete it."
+      within: "packages/*/src/**"
+      withinNot: "**/*.test.ts"
+      entry: ["packages/*/src/index.ts", "packages/*/src/main.ts"]
+  reach:
+    - name: adapters-through-ports
+      message: "An adapter reaches infrastructure only through a port."
+      from: "packages/*/src/adapters/**"
+      to: "packages/*/src/infrastructure/**"
+      via: "packages/*/src/ports/**"
 ```
 
 `graph` is a top-level section, not a node: its rules are statements about the repository,

@@ -7,24 +7,20 @@ Every pattern in a manifest is matched against a **resolved** path. This is the 
 rest of the package rests on: a rule about `@/modules/user/domain` is a rule about the file
 that specifier actually names, not about the eleven characters someone typed.
 
-```js
-resolve: {
-  scopes: [
-    {
-      files: "^packages/(web|components)/",
-      language: "typescript",
-      options: { tsconfig: "tsconfig.resolve-web.json" },
-    },
-    {
-      files: "^packages/acceptance/",
-      language: "typescript",
-      options: { tsconfig: "packages/acceptance/tsconfig.json" },
-    },
-    { files: "", language: "typescript", options: { tsconfig: "tsconfig.resolve.json" } },
-  ],
-  unresolved: "error",
-  ignoreUnresolved: [],
-},
+```yaml
+resolve:
+  scopes:
+    - files: "^packages/(web|components)/"
+      language: typescript
+      options: { tsconfig: tsconfig.resolve-web.json }
+    - files: "^packages/acceptance/"
+      language: typescript
+      options: { tsconfig: packages/acceptance/tsconfig.json }
+    - files: ""
+      language: typescript
+      options: { tsconfig: tsconfig.resolve.json }
+  unresolved: error
+  ignoreUnresolved: []
 ```
 
 ## Scopes

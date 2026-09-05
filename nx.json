@@ -14,7 +14,7 @@
       "{workspaceRoot}/tsconfig.base.json",
       "{workspaceRoot}/tsconfig.resolve.json",
       "{workspaceRoot}/.oxlintrc.json",
-      "{workspaceRoot}/architecture.config.mjs",
+      "{workspaceRoot}/architecture.yaml",
       "{workspaceRoot}/scripts/lint-rules/**/*"
     ]
   },

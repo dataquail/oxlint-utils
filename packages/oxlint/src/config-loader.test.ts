@@ -22,9 +22,9 @@ afterAll(() => {
 });
 
 let counter = 0;
-const writeConfig = (source: string): string => {
+const writeConfig = (source: string, extension = "mjs"): string => {
   counter += 1;
-  const name = `config-${String(counter)}.mjs`;
+  const name = `config-${String(counter)}.${extension}`;
   writeFileSync(path.join(scratch, name), source);
   return path.join(scratch, name);
 };
@@ -298,6 +298,62 @@ describe("loadPolicy", () => {
   it("compiles the repo's own policy, so this suite fails if that config breaks", async () => {
     const policy = await loadPolicy(repoRoot);
     expect(policy.importRules.length).toBeGreaterThan(0);
+  });
+});
+
+// The plugin reads a data manifest through the same loader as a module one,
+// and adds what only a data file can give: the line a mistake is on.
+describe("loadPolicy from a YAML manifest", () => {
+  const YAML = `resolve:
+  scopes:
+    - files: ""
+      language: typescript
+      options: { tsconfig: tsconfig.resolve.json }
+defs:
+  domain-only:
+    message: "domain/ may only reach the contracts tier."
+    allow: ["packages/server/src/modules/{module}/domain/**"]
+tree:
+  "packages/server/src/modules/{module}/domain/":
+    message: "domain/ may only reach the contracts tier."
+    imports: { use: domain-only }
+    children: { "*.root.ts": {} }
+`;
+
+  it("compiles a valid YAML policy, defs and use included", async () => {
+    const policy = await loadPolicy(repoRoot, writeConfig(YAML, "yaml"));
+    expect(policy.importRules.map((rule) => rule.name)).toEqual([
+      "packages-server-src-modules-module-domain/imports",
+    ]);
+  });
+
+  it("names the file, line and column of a shape error, and the use it came through", async () => {
+    await expect(
+      loadPolicy(repoRoot, writeConfig(YAML.replace("allow:", "alow:"), "yaml")),
+    ).rejects.toThrow(
+      /config-\d+\.yaml:9:5 {2}defs\["domain-only"\]\.alow: Unexpected key.*via `use: "domain-only"` at config-\d+\.yaml:13:5/,
+    );
+  });
+
+  it("reads JSON through the same path", async () => {
+    const json = JSON.stringify({
+      resolve: {
+        scopes: [
+          { files: "", language: "typescript", options: { tsconfig: "tsconfig.resolve.json" } },
+        ],
+      },
+      tree: { "packages/web/src/": { layout: "open", children: {} } },
+    });
+    const policy = await loadPolicy(repoRoot, writeConfig(json, "json"));
+    expect(policy.structure.folders.length).toBeGreaterThan(0);
+  });
+
+  it("discovers the manifest by name when none is given, and says which names it looked for", async () => {
+    const empty = path.join(scratch, "empty");
+    mkdirSync(empty, { recursive: true });
+    await expect(loadPolicy(empty)).rejects.toThrow(
+      /no architecture manifest found.*architecture\.yaml, architecture\.yml, architecture\.json, architecture\.config\.mjs/,
+    );
   });
 });
 

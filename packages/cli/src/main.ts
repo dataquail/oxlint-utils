@@ -5,7 +5,9 @@ import * as Exit from "effect/Exit";
 
 import { run } from "./run.js";
 
-const exit = await Effect.runPromiseExit(run(process.cwd(), process.argv.slice(2)));
+const exit = await Effect.runPromiseExit(
+  run(process.cwd(), process.argv.slice(2), process.env.ARCHITECTURE_CONFIG),
+);
 
 if (Exit.isFailure(exit)) {
   // The expected failures carry their own sentence; anything else is a defect

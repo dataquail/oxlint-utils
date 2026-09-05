@@ -1,7 +1,7 @@
 import * as path from "node:path";
 
 import {
-  DEFAULT_CONFIG_FILENAME,
+  findManifestFile,
   type LoadedPolicy,
   loadPolicy,
   makeFileSystemLive,
@@ -11,7 +11,6 @@ import { typescriptLanguage } from "@goodbones/typescript";
 import * as Result from "effect/Result";
 
 export type { LoadedPolicy } from "@goodbones/core";
-export { DEFAULT_CONFIG_FILENAME } from "@goodbones/core";
 
 // The plugin's composition root: read the manifest file, construct the
 // language packs and the live file system, and hand them to the loader. A load
@@ -20,13 +19,20 @@ export { DEFAULT_CONFIG_FILENAME } from "@goodbones/core";
 // indistinguishable from a clean codebase.
 export const loadPolicyFromFile = async (
   repoRoot: string,
-  configFilename: string = DEFAULT_CONFIG_FILENAME,
+  configFilename?: string,
 ): Promise<LoadedPolicy> => {
-  const configPath = path.resolve(repoRoot, configFilename);
+  // Named, or discovered: architecture.yaml, .yml, .json, or .config.mjs,
+  // exactly one of which may be present.
+  const configPath =
+    configFilename === undefined
+      ? findManifestFile(repoRoot)
+      : path.resolve(repoRoot, configFilename);
+  const read = await readManifestFile(configPath);
   const loaded = loadPolicy({
     repoRoot,
     configPath,
-    manifest: await readManifestFile(configPath),
+    manifest: read.manifest,
+    locate: read.locate,
     languages: [typescriptLanguage()],
     fileSystem: makeFileSystemLive(repoRoot),
   });

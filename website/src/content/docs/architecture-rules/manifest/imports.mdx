@@ -6,21 +6,16 @@ description: What a part of the tree may reach — allow, external, deny, and th
 `imports` states what this node and everything under it may reach. It is the family that
 carries dependency-direction policy: which tiers may see which, and which may not.
 
-```js
-"@/modules/{module}/domain/": {
-  imports: {
-    message: "domain/ holds the model — no framework, no persistence, no bus.",
-    reset: true,
-    external: ["effect"],
-    allow: ["@/modules/{module}/domain/**", "@/platform/ddd/contracts/**"],
-    deny: [
-      {
-        match: "@/modules/*/index.ts",
-        message: "Cross-module access goes through a port, not another module's barrel.",
-      },
-    ],
-  },
-},
+```yaml
+"@/modules/{module}/domain/":
+  imports:
+    message: "domain/ holds the model — no framework, no persistence, no bus."
+    reset: true
+    external: [effect]
+    allow: ["@/modules/{module}/domain/**", "@/platform/ddd/contracts/**"]
+    deny:
+      - match: "@/modules/*/index.ts"
+        message: "Cross-module access goes through a port, not another module's barrel."
 ```
 
 | Field          | Meaning                                                                        |
@@ -42,8 +37,8 @@ in a diff someone reviews.
 Local and external targets are separate channels. `allow` governs files inside the
 repository; `external` governs npm packages, matched by package name:
 
-```js
-external: ["effect", "@effect-server-utils/cqrs"],
+```yaml
+external: [effect, "@effect-server-utils/cqrs"]
 ```
 
 `external: []` is meaningful and strong — _"this tier reaches no third-party code at all"_.
@@ -63,15 +58,12 @@ target outside the allowlist is already refused — it is about the message. `de
 rule keeps a specific, useful sentence for a mistake that the allowlist would otherwise
 report generically:
 
-```js
-deny: [
-  {
-    match: "packages/*/src/**",
-    matchNot: "packages/contracts/src/**",
-    except: "**/*.test.ts",
-    message: "A domain type may not cross a package boundary except through contracts.",
-  },
-],
+```yaml
+deny:
+  - match: "packages/*/src/**"
+    matchNot: "packages/contracts/src/**"
+    except: "**/*.test.ts"
+    message: "A domain type may not cross a package boundary except through contracts."
 ```
 
 | Field      | Meaning                                         |

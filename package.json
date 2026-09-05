@@ -29,6 +29,7 @@
     "architecture:explain": "pnpm run build:packages && node packages/cli/build/esm/main.js explain",
     "architecture:coverage": "pnpm run build:packages && node packages/cli/build/esm/main.js coverage packages",
     "architecture:facts": "pnpm run build:packages && node packages/cli/build/esm/main.js facts",
+    "schema:manifest": "pnpm run build:packages && node scripts/emit-manifest-schema.mjs",
     "check": "tsc -b tsconfig.json",
     "check:effect": "node scripts/check-effect-diagnostics.mjs",
     "precommit": "nx run-many -t lint test check",

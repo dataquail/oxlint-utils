@@ -31,7 +31,7 @@ script someone remembers to run — a load-time error that stops the lint run.
 | `graph`     | a synthetic graph the rule must report on: two files importing each other, a lone file, an edge that touches no `via` |
 
 A rule that admits everything by design — the layout rule emitted by
-[`layout: "open"`](/goodbones/architecture-rules/manifest/structure/) — has no path it must
+[`layout: open`](/goodbones/architecture-rules/manifest/structure/) — has no path it must
 reject, and is skipped rather than given a probe it could not pass.
 
 Structure parity is checked _structurally_ — that the rule still selects its probe path and
@@ -58,22 +58,17 @@ exist to prevent.
 For `members`, `exports` and `surface`, a rule may carry its own probe: a source snippet and the name
 the rule must report out of it.
 
-```js
-"*.repository.ts": {
-  members: [
-    {
-      message: 'Port method "{name}" is not in the vocabulary.',
-      subject: "members",
-      declares: ["type", "interface"],
-      in: "*RepositoryShape",
-      allow: ["findOneById", "save"],
-      probe: {
-        source: "export type TodosRepositoryShape = { findOneByEmail(): void };",
-        name: "findOneByEmail",
-      },
-    },
-  ],
-},
+```yaml
+"*.repository.ts":
+  members:
+    - message: 'Port method "{name}" is not in the vocabulary.'
+      subject: members
+      declares: [type, interface]
+      in: "*RepositoryShape"
+      allow: [findOneById, save]
+      probe:
+        source: "export type TodosRepositoryShape = { findOneByEmail(): void };"
+        name: findOneByEmail
 ```
 
 At load, the snippet is **parsed** — by the same extractor the CLI reads every file through —
@@ -89,16 +84,15 @@ between a rule you _believe_ covers your ports and one that has been shown to.
 
 For `exports`, the snippet is an import statement and the name is the binding:
 
-```js
-exports: [
-  {
-    name: "bus-factories",
-    message: "Only a composition root may build a bus.",
-    module: "**/node_modules/@org/cqrs/**",
-    symbols: ["makeCommandBus"],
-    probe: { source: 'import { makeCommandBus } from "@org/cqrs";', symbol: "makeCommandBus" },
-  },
-],
+```yaml
+exports:
+  - name: bus-factories
+    message: "Only a composition root may build a bus."
+    module: "**/node_modules/@org/cqrs/**"
+    symbols: [makeCommandBus]
+    probe:
+      source: 'import { makeCommandBus } from "@org/cqrs";'
+      symbol: makeCommandBus
 ```
 
 Every edge in the snippet is taken to reach `module`, so the probe is about the binding form
