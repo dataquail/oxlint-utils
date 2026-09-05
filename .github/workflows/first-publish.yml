@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       packages:
-        description: "Package names to publish, comma- or space-separated (e.g. oxlint-architecture-rules)"
+        description: "Package names to publish, comma- or space-separated (e.g. @goodbones/core)"
         required: true
         type: string
       preid:

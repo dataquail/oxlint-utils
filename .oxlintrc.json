@@ -13,7 +13,7 @@
       // while still linting green, which is why `lint` builds first and the Nx
       // lint target depends on build.
       "name": "architecture",
-      "specifier": "./packages/oxlint-architecture-rules/build/esm/adapters/oxlint/plugin.js"
+      "specifier": "./packages/oxlint/build/esm/plugin.js"
     },
     "eslint-plugin-codegen",
     "eslint-plugin-simple-import-sort",
@@ -238,7 +238,7 @@
     {
       // The oxlint plugin barrel has to default-export the plugin object oxlint
       // loads; a named-only export would give it nothing to read.
-      "files": ["packages/oxlint-architecture-rules/src/adapters/oxlint/plugin.ts"],
+      "files": ["packages/oxlint/src/plugin.ts"],
       "rules": {
         "local/prefer-named-exports": "off"
       }

@@ -1,0 +1,68 @@
+{
+  "name": "@goodbones/oxlint",
+  "version": "0.1.0-beta.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "The oxlint plugin for @goodbones/core: the imports, exports, members, structure and surface families as five oxlint rules, evaluated in the editor and in CI from the same manifest the CLI reads.",
+  "author": "zacharyweidenbach",
+  "keywords": [
+    "architecture",
+    "lint",
+    "import-boundaries",
+    "hexagonal",
+    "monorepo"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dataquail/oxlint-utils.git",
+    "directory": "packages/oxlint"
+  },
+  "homepage": "https://dataquail.github.io/oxlint-utils",
+  "bugs": {
+    "url": "https://github.com/dataquail/oxlint-utils/issues"
+  },
+  "exports": {
+    ".": {
+      "types": "./build/dts/plugin.d.ts",
+      "default": "./build/esm/plugin.js"
+    },
+    "./plugin": {
+      "types": "./build/dts/plugin.d.ts",
+      "default": "./build/esm/plugin.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "types": "./build/dts/plugin.d.ts",
+  "files": [
+    "build/dts",
+    "build/esm",
+    "src",
+    "!src/**/*.test.ts"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json",
+    "check": "tsc -b tsconfig.json",
+    "clean": "rm -rf build .tsbuildinfo",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@goodbones/core": "workspace:*",
+    "@goodbones/typescript": "workspace:*",
+    "effect": "4.0.0-beta.94"
+  },
+  "peerDependencies": {
+    "oxlint": ">=1.77.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.4",
+    "oxlint": "1.81.0"
+  },
+  "nx": {
+    "includedScripts": []
+  }
+}
