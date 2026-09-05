@@ -1,6 +1,6 @@
 ---
 title: The CLI
-description: check, baseline, coverage, explain and facts — the same policy with no linter in the loop.
+description: check, baseline, coverage, explain, facts, init and migrate — the same policy with no linter in the loop.
 ---
 
 The package ships a second way to ask the same question.
@@ -11,12 +11,18 @@ architecture baseline [roots…]   # record what the repository currently violat
 architecture coverage [roots…]   # how much of the tree the policy reaches
 architecture explain <file>      # what governs this file, and why
 architecture facts <file>        # what the parser read out of this file
+architecture init                # write a starter architecture.yaml
+architecture migrate             # rewrite a JavaScript manifest as architecture.yaml
 ```
 
 `roots` are directories to walk, defaulting to `packages`. The walker visits the source files
 of the languages the policy's scopes name — for TypeScript, `.ts`, `.tsx`, `.mts` and `.cts`,
 skipping declaration files — and steps over the folders no policy is written about:
 `node_modules`, `build`, `dist`, `.next`, `coverage`.
+
+The manifest is found by name in the working directory — `architecture.yaml`, `.yml`,
+`.json`, or `architecture.config.mjs`, exactly one of which may be present — or named by
+`ARCHITECTURE_CONFIG`. See [Formats](/goodbones/architecture-rules/manifest/#formats).
 
 ## Why a second adapter
 
@@ -32,19 +38,6 @@ keep in sync.
 
 It is also the only way to write a baseline, which needs every finding at once rather than
 one file at a time.
-
-## Graph rules
-
-The [`graph`](/goodbones/architecture-rules/manifest/graph/) family — cycles, orphans, what a
-tier may reach through any number of hops — is **evaluated by the CLI only**. The plugin sees
-one file at a time and has no view of the others; "does anything import this?" is not a
-question it can ask. Both adapters still compile and probe graph rules at load, so a vacuous
-one fails the lint run too, but only `check` has the graph to evaluate them against.
-
-That makes the CLI a **superset** of the plugin rather than a mirror of it, and it is the one
-deliberate asymmetry between them. Run both: oxlint for the per-file families at editor
-speed, `check` in CI for those plus the graph. The graph is built only when a rule needs it,
-and every file is parsed once whether the per-file families or the graph pass asks first.
 
 ## Graph rules
 
@@ -169,6 +162,23 @@ not a referenced type or an object literal.
 
 `--json` prints the same facts as one JSON object, for scripting.
 
+## `init`
+
+Writes a starter `architecture.yaml` for a repository that has none: the schema header, one
+open root that reaches itself and the runtime, both adoption ceilings at zero, and a comment
+per section naming the page that explains it. It refuses to overwrite a manifest in any of
+the four names. The starter is tight enough to fire on the first external import, which is
+the moment to run `check`, read what the tree reaches, and write that down by name.
+
+## `migrate`
+
+Reads a JavaScript manifest — the one found by name, or the one `ARCHITECTURE_CONFIG`
+names — and writes the same policy as `architecture.yaml`, schema header included. It
+decodes the module first and writes nothing if that fails; it hoists nothing into `defs`,
+since which subtrees are worth naming is the author's call; and it cannot carry comments,
+which it says. Delete the module afterwards: a repository with two manifests is refused.
+See [Using a JavaScript manifest](/goodbones/architecture-rules/manifest/javascript/).
+
 ## Which forms count
 
 Both adapters read the same forms out of their respective syntax trees, and a test suite in
@@ -218,4 +228,4 @@ vocabulary rule can speak about and are not reported.
 
 Run `check` in CI alongside `oxlint`. On the per-file families they evaluate the same manifest
 and should agree; if they ever disagree, one of the two adapters has a bug, and finding that
-out is worth the duplicated run. On the graph, only `check` has an answer. On the graph, only `check` has an answer.
+out is worth the duplicated run. On the graph, only `check` has an answer.

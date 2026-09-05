@@ -109,19 +109,40 @@ export {
   type SourceFacts,
 } from "./domain/facts.js";
 export {
+  type ManifestLocator,
+  type ManifestPath,
+  type ManifestPosition,
+} from "./domain/manifest-location.js";
+export {
   fingerprintOf,
   formatMessage,
   type Violation,
   type ViolationKind,
 } from "./domain/violation.js";
 export { makeFileSystemLive } from "./infrastructure/file-system-live.js";
-export { DEFAULT_CONFIG_FILENAME, readManifestFile } from "./infrastructure/manifest-file.js";
+export {
+  findManifestFile,
+  formatManifestYaml,
+  MANIFEST_FILENAMES,
+  type ManifestFile,
+  readManifestFile,
+} from "./infrastructure/manifest-file.js";
 export { listSourceFiles, type WalkedLanguage } from "./infrastructure/walk.js";
 export { type LoadedPolicy, loadPolicy, type LoadPolicyInput } from "./load/policy.js";
 export { type LoweredRules, lowerManifest, type ProbeLanguage } from "./manifest/compile.js";
 export {
+  type ExpandedManifest,
+  type ExpandIssue,
+  expandManifest,
+  type Origin,
+  originOf,
+  type Substitution,
+} from "./manifest/expand.js";
+export { MANIFEST_SCHEMA_ID, manifestJsonSchema } from "./manifest/json-schema.js";
+export {
   type DecodedManifest,
   decodeManifest,
+  type DecodeManifestOptions,
   type Manifest,
   type ManifestNode,
   Manifest as ManifestSchema,

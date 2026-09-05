@@ -22,18 +22,16 @@ green check, from one that is fully enforced.
 
 ## `limits`
 
-```js
-limits: {
-  unrestricted: 3,   // at most three tiers may say `unrestricted: true`
-  partial: 1,        // at most one folder may be `partial`
-  coverage: {        // floors, as fractions of the files walked
-    imports: 0.9,
-    structure: 0.8,
-    members: 0.2,
-    surface: 0.5,
-    graph: 1,
-  },
-},
+```yaml
+limits:
+  unrestricted: 3 # at most three tiers may say `unrestricted: true`
+  partial: 1 # at most one folder may be `partial`
+  coverage: # floors, as fractions of the files walked
+    imports: 0.9
+    structure: 0.8
+    members: 0.2
+    surface: 0.5
+    graph: 1
 ```
 
 **The ceilings are checked at load, by both adapters.** A policy with more `unrestricted` or

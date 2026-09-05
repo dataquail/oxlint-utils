@@ -5,23 +5,25 @@ description: The shape of a manifest — nodes, the fields on one, and the repo-
 
 A manifest is a tree of nodes keyed by path pattern. A key ending in `/` is a folder;
 anything else is a file. Everything the architecture says about a part of the tree is
-written at that part of the tree.
+written at that part of the tree. It is a YAML file, `architecture.yaml` at the repository
+root — see [Formats](#formats) for the others.
 
-```js
-/** @type {import("@goodbones/core").Manifest} */
-export default {
-  resolve: {
-    scopes: [{ files: "", language: "typescript", options: { tsconfig: "tsconfig.json" } }],
-    unresolved: "error",
-  },
-  baseline: ".architecture-baseline.json",
-  aliases: { "@": "packages/server/src", "~": "packages" },
-  deny: [/* prohibitions that hold everywhere */],
-  exports: [/* who may name a given exported symbol */],
-  graph: {/* cycles, orphans, reach — the whole repository at once */},
-  limits: {/* ceilings on the adoption backlog, floors on coverage */},
-  tree: {/* the repository */},
-};
+```yaml
+# yaml-language-server: $schema=https://dataquail.github.io/goodbones/schema/architecture.schema.json
+resolve:
+  scopes:
+    - files: ""
+      language: typescript
+      options: { tsconfig: tsconfig.json }
+  unresolved: error
+baseline: .architecture-baseline.json
+aliases: { "@": packages/server/src, "~": packages }
+deny: [] # prohibitions that hold everywhere
+exports: [] # who may name a given exported symbol
+graph: {} # cycles, orphans, reach — the whole repository at once
+limits: {} # ceilings on the adoption backlog, floors on coverage
+defs: {} # fragments the tree below reuses
+tree: {} # the repository
 ```
 
 ## Top level
@@ -35,6 +37,7 @@ export default {
 | `exports`  | which importers may name a given exported symbol                                                                                 |
 | `graph`    | cycles, orphans and transitive reach over the whole import graph — [Graph](/goodbones/architecture-rules/manifest/graph/)        |
 | `limits`   | ceilings on `unrestricted`/`partial` tiers, floors on coverage — [Adoption](/goodbones/architecture-rules/enforcement/adoption/) |
+| `defs`     | named fragments, used anywhere below as `{ use: <name> }` — [Reuse](#reuse-defs-and-use)                                         |
 | `tree`     | the manifest proper                                                                                                              |
 
 `deny`, `exports`, `graph` and `limits` sit above the tree because they are statements about
@@ -49,33 +52,27 @@ real.
 
 ## A node
 
-```js
-"@/modules/{module}/domain/{subdomain}/": {
-  message: "domain/ holds the model for one subdomain.",
-  imports: { reset: true, external: ["effect"], allow: ["@/modules/{module}/domain/**"] },
-  children: {
-    "*.root.ts": {
-      name: { like: "{subdomain}" },
-      requires: ["{base}.root.test.ts"],
-    },
-    "*.repository.ts": {
-      importedBy: {
-        message: "A repository is reached from a command handler.",
-        allow: ["@/modules/*/commands/**"],
-      },
-      members: [
-        {
-          message: 'A port method named "{name}" is a query in disguise.',
-          subject: "members",
-          declares: ["type", "interface"],
-          in: "*RepositoryShape",
-          allow: ["findOneById", "save", "delete"],
-        },
-      ],
-      surface: [{ message: "A port exports its type and nothing else.", declares: ["variable", "function", "class"] }],
-    },
-  },
-},
+```yaml
+"@/modules/{module}/domain/{subdomain}/":
+  message: "domain/ holds the model for one subdomain."
+  imports: { reset: true, external: [effect], allow: ["@/modules/{module}/domain/**"] }
+  children:
+    "*.root.ts":
+      name: { like: "{subdomain}" }
+      requires: ["{base}.root.test.ts"]
+    "*.repository.ts":
+      importedBy:
+        message: "A repository is reached from a command handler."
+        allow: ["@/modules/*/commands/**"]
+      members:
+        - message: 'A port method named "{name}" is a query in disguise.'
+          subject: members
+          declares: [type, interface]
+          in: "*RepositoryShape"
+          allow: [findOneById, save, delete]
+      surface:
+        - message: "A port exports its type and nothing else."
+          declares: [variable, function, class]
 ```
 
 | Field         | Question it answers                             | Page                                                               |
@@ -90,11 +87,85 @@ real.
 | `requiresNot` | which filenames does that obligation skip?      | [Structure](/goodbones/architecture-rules/manifest/structure/)     |
 | `children`    | which files and folders does this folder admit? | [Structure](/goodbones/architecture-rules/manifest/structure/)     |
 | `partial`     | carry policy here without enumerating contents  | [Inheritance](/goodbones/architecture-rules/manifest/inheritance/) |
-| `layout`      | `"open"` — do not enumerate file names here     | [Structure](/goodbones/architecture-rules/manifest/structure/)     |
+| `layout`      | `open` — do not enumerate file names here       | [Structure](/goodbones/architecture-rules/manifest/structure/)     |
 
 Every field is optional. An empty node — `"*.root.ts": {}` — is meaningful and common: it
 says the file is admitted here and inherits everything above it. That is how a folder's
 `children` doubles as its file taxonomy.
+
+## Formats
+
+A manifest is a data file: `architecture.yaml` (or `.yml`), or `architecture.json`, which the
+same parser reads. Both hosts look for one by name at the repository root, in that order,
+and then for `architecture.config.mjs`; exactly one may be present, and `ARCHITECTURE_CONFIG`
+names a file somewhere else. The JavaScript module is still read — see
+[Using a JavaScript manifest](/goodbones/architecture-rules/manifest/javascript/) for when that
+is worth it — but the data forms are what every page here is written in, and the only forms a
+host in another language could read.
+
+The first line of a YAML manifest names its schema, and the editor does the rest: completion
+on every key, and a misspelled one flagged before the loader runs.
+
+```yaml
+# yaml-language-server: $schema=https://dataquail.github.io/goodbones/schema/architecture.schema.json
+```
+
+A JSON manifest says the same with a `$schema` key, which the loader strips. The schema is
+generated from the codec that decodes the manifest, so the two cannot disagree, and it ships
+inside `@goodbones/core` as `schema/architecture.schema.json` for an editor that would rather
+not fetch it.
+
+What the schema does not catch, the loader does, naming the file, the line and the column —
+and every issue, not the first:
+
+```
+architecture.yaml: the manifest does not decode:
+  architecture.yaml:142:9  tree["~/core/"].members[0].subject: Expected "members" | "calls", got "call"
+  architecture.yaml:201:7  tree["~/cli/"].imports.alow: Unexpected key
+```
+
+Quote every glob and every message: `*`, `@`, a backtick and `{` all mean something to YAML
+when bare. [Patterns](/goodbones/architecture-rules/manifest/patterns/#quoting-in-yaml) has the
+rules.
+
+## Reuse: `defs` and `use`
+
+A top-level `defs` map names fragments. Anywhere below it — a rule in `members`, `surface`,
+`exports`, `deny` or `graph`, a whole `imports` object, a whole node under `children` —
+`{ use: <name> }` is replaced by a copy of the fragment before the manifest is decoded:
+
+```yaml
+defs:
+  no-file-system-calls:
+    message: "`{name}` reads or writes the file system. This tier is given facts."
+    subject: calls
+    match: ["*Sync", readFile, writeFile]
+  package-floor:
+    external: [effect]
+    allow: ["node:**"]
+
+tree:
+  "packages/core/":
+    imports: { use: package-floor, message: "This import is not on the allowlist." }
+    children:
+      "src/domain/": { members: [{ use: no-file-system-calls }], children: {} }
+      "src/core/": { members: [{ use: no-file-system-calls }], children: {} }
+```
+
+A key written beside `use` overrides the fragment's key of the same name, shallowly: a list
+replaces the list rather than merging with it, and a fragment that needs partial override is
+two fragments. A fragment may itself contain `use`. A cycle is refused, naming the chain, and
+so is a name `defs` does not contain, listing the ones it does. The decode that follows judges
+the copy where it landed, so a fragment used where its shape does not fit is reported at the
+fragment, via the `use` that pulled it in.
+
+This is the manifest's own mechanism, so it works the same in YAML, in JSON, and in a
+JavaScript module. YAML anchors and merge keys (`&floor`, `<<: *floor`) work too, because the
+parser resolves them before the manifest is read; but JSON has no such thing, and an error
+inside a merged key cannot name its line, so `defs` is the one the docs use.
+
+There is no interpolation, no include, and no deep merge. A manifest that needs those needs a
+generator, and a generator can emit YAML.
 
 ## What it compiles to
 

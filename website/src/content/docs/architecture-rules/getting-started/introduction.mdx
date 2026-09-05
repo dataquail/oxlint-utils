@@ -64,24 +64,19 @@ on their `from` side as the repository grows.
 A manifest inverts that. It reads like a directory listing, and everything the architecture
 says about a folder is written at that folder:
 
-```js
-"@/modules/{module}/domain/": {
-  message: "domain/ holds the model — no framework, no persistence, no bus.",
-  imports: {
-    reset: true,
-    external: ["effect"],
-    allow: ["@/modules/{module}/domain/**", "@/platform/ddd/contracts/**"],
-  },
-  children: {
-    "*.root.ts": { requires: ["{base}.root.test.ts"] },
-    "*.repository.ts": {
-      importedBy: {
-        message: "A repository is reached from a command handler, not a query.",
-        allow: ["@/modules/*/commands/**", "@/modules/*/event-handlers/**"],
-      },
-    },
-  },
-},
+```yaml
+"@/modules/{module}/domain/":
+  message: "domain/ holds the model — no framework, no persistence, no bus."
+  imports:
+    reset: true
+    external: [effect]
+    allow: ["@/modules/{module}/domain/**", "@/platform/ddd/contracts/**"]
+  children:
+    "*.root.ts": { requires: ["{base}.root.test.ts"] }
+    "*.repository.ts":
+      importedBy:
+        message: "A repository is reached from a command handler, not a query."
+        allow: ["@/modules/*/commands/**", "@/modules/*/event-handlers/**"]
 ```
 
 The trade is real and worth naming: a tree answers _"what governs this file?"_ well and

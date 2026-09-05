@@ -1,4 +1,4 @@
-import { DEFAULT_CONFIG_FILENAME, loadPolicyFromFile } from "./config-loader.js";
+import { loadPolicyFromFile } from "./config-loader.js";
 import { makeExportsRule } from "./exports-rule.js";
 import { makeImportsRule } from "./imports-rule.js";
 import { makeMembersRule } from "./members-rule.js";
@@ -13,7 +13,7 @@ import { makeSurfaceRule } from "./surface-rule.js";
 // codebase.
 const policy = await loadPolicyFromFile(
   process.env.ARCHITECTURE_ROOT ?? process.cwd(),
-  process.env.ARCHITECTURE_CONFIG ?? DEFAULT_CONFIG_FILENAME,
+  process.env.ARCHITECTURE_CONFIG,
 );
 
 // A manifest written in a shape on its way out still loads; it says so once,

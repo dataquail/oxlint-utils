@@ -28,13 +28,11 @@ way you expect rather than silently excluding the folder's own index file.
 A `{name}` in a **tree key** declares a capture of one segment. Anywhere below that node it
 is a back-reference to what the key captured:
 
-```js
-"@/modules/{module}/domain/": {
-  imports: {
-    // …the SAME module's domain, not any module's.
-    allow: ["@/modules/{module}/domain/**"],
-  },
-},
+```yaml
+"@/modules/{module}/domain/":
+  imports:
+    # …the SAME module's domain, not any module's.
+    allow: ["@/modules/{module}/domain/**"]
 ```
 
 Without the capture you would have to write one node per module, or write a rule that lets
@@ -52,15 +50,12 @@ rather than emit it.
 
 The one place a pattern says something about a single character, and the reason is React:
 
-```js
-members: [
-  {
-    subject: "calls",
-    match: "use[A-Z]*",
-    allow: ["useAtomValue", "useAtomSet", "useAtomSuspense", "useId", "useCallback"],
-    message: "`{name}` puts state in the View. It belongs in the ViewModel.",
-  },
-],
+```yaml
+members:
+  - subject: calls
+    match: "use[A-Z]*"
+    allow: [useAtomValue, useAtomSet, useAtomSuspense, useId, useCallback]
+    message: "`{name}` puts state in the View. It belongs in the ViewModel."
 ```
 
 `use[A-Z]*` is _"a hook"_ — `useState`, `useEffect` — without also matching `user` or
@@ -71,22 +66,52 @@ members: [
 A tree key may hold several patterns separated by `|`, which is how several file
 stereotypes share one node without repeating its body:
 
-```js
-children: {
-  "*.aggregate-ops.ts | *.entity-ops.ts | *.value-object-ops.ts": constituentOps,
-},
+```yaml
+children:
+  "*.aggregate-ops.ts | *.entity-ops.ts | *.value-object-ops.ts": { use: constituent-ops }
 ```
 
 This is a **tree-key** feature. Inside a pattern used as a value — a `match`, an `allow`
 entry — `|` is a literal character. Where a value needs several patterns, every field that
 takes a glob also takes an array of them:
 
-```js
-// wrong — matches a file literally named "a.ts | b.ts"
-match: "**/*.test.ts | **/*.test.tsx",
+```yaml
+# wrong — matches a file literally named "a.ts | b.ts"
+match: "**/*.test.ts | **/*.test.tsx"
 
-// right
-match: ["**/*.test.ts", "**/*.test.tsx"],
+# right
+match: ["**/*.test.ts", "**/*.test.tsx"]
+```
+
+## Quoting in YAML
+
+Every glob in a YAML manifest is quoted. A bare `*` opens an alias, a bare `@` or backtick
+is reserved, a bare `{` opens a flow mapping, and ` #` starts a comment — so a pattern left
+unquoted either fails to parse or means something else. Messages are quoted for the same
+reason: most start with a backtick or contain a colon.
+
+```yaml
+allow: ["@/domain/**", "**/*.test.ts"] # quoted: `@` and `*`
+match: "use[A-Z]*" # quoted: `*`
+name: { regex: "^(?:Database|[a-z0-9]+(?:-[a-z0-9]+)*)$" } # single quotes: nothing is escaped
+```
+
+Double quotes process backslash escapes, so a regex with `\d` or `\.` goes in single quotes,
+where nothing is. A capture `{name}` and a character class `[A-Z]` are literal in either.
+Bare words are fine where the value is a plain name — `subject: calls`, `kinds: [default]`,
+`convention: kebab-case` — and a bare `yes`, `no`, `on` or `off` reads as a string, since the
+loader speaks YAML 1.2; quote those anyway, for the sake of tools that still speak 1.1.
+
+A multi-line value is a block scalar — `|` keeps the line breaks, `>-` folds them — which is
+how a long message or a [probe source](/goodbones/architecture-rules/enforcement/probes/)
+avoids string concatenation:
+
+```yaml
+probe:
+  source: |
+    import { readFileSync } from "node:fs";
+    readFileSync("x");
+  name: readFileSync
 ```
 
 ## Placeholders in messages and requirements

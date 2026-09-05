@@ -11,7 +11,8 @@
       "options": {
         "command": "pnpm run build",
         "cwd": "website"
-      }
+      },
+      "inputs": ["default", "{workspaceRoot}/packages/core/schema/**/*"]
     },
     "dev": {
       "executor": "nx:run-commands",

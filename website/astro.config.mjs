@@ -40,6 +40,7 @@ export default defineConfig({
                 { slug: "architecture-rules/manifest/graph" },
                 { slug: "architecture-rules/manifest/structure" },
                 { slug: "architecture-rules/manifest/inheritance" },
+                { slug: "architecture-rules/manifest/javascript" },
               ],
             },
             {

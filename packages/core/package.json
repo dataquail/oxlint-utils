@@ -33,12 +33,14 @@
       "types": "./build/dts/testing.d.ts",
       "default": "./build/esm/testing.js"
     },
+    "./schema/architecture.schema.json": "./schema/architecture.schema.json",
     "./package.json": "./package.json"
   },
   "types": "./build/dts/index.d.ts",
   "files": [
     "build/dts",
     "build/esm",
+    "schema",
     "src",
     "!src/**/*.test.ts"
   ],
@@ -50,10 +52,12 @@
     "coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "effect": "4.0.0-beta.94"
+    "effect": "4.0.0-beta.94",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
-    "@types/node": "^25.9.4"
+    "@types/node": "^25.9.4",
+    "ajv": "^8.20.0"
   },
   "nx": {
     "includedScripts": []

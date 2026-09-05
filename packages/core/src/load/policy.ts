@@ -44,6 +44,7 @@ import {
   type PatternInvalid,
 } from "../domain/architecture-error.js";
 import type { SourceFacts } from "../domain/facts.js";
+import type { ManifestLocator } from "../domain/manifest-location.js";
 import { type LoweredRules, lowerManifest } from "../manifest/compile.js";
 import { decodeManifest, type Manifest } from "../manifest/manifest.js";
 import type { FactExtractor } from "../ports/fact-extractor.js";
@@ -93,6 +94,9 @@ export type LoadPolicyInput = {
   // The manifest as the host read it — a module's default export, a parsed
   // document — before decoding.
   readonly manifest: unknown;
+  // From a data file, where a path in the manifest was written, so a decode
+  // error names a line. A module manifest has none to give.
+  readonly locate?: ManifestLocator | undefined;
   readonly languages: ReadonlyArray<Language>;
   readonly fileSystem: FileSystem;
 };
@@ -202,7 +206,7 @@ export const loadPolicy = (
 ): Result.Result<LoadedPolicy, ConfigInvalid | PatternInvalid> => {
   const { configPath, fileSystem, languages, repoRoot } = input;
 
-  const decoded = decodeManifest(configPath, input.manifest);
+  const decoded = decodeManifest(configPath, input.manifest, { locate: input.locate });
   if (Result.isFailure(decoded)) return Result.fail(decoded.failure);
   const config = decoded.success.manifest;
 

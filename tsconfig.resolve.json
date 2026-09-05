@@ -2,7 +2,7 @@
   "compilerOptions": {
     "baseUrl": ".",
     // Resolution-only config, consumed by the `architecture` plugin
-    // (`architecture.config.mjs`, `resolve.scopes`). It mirrors
+    // (`architecture.yaml`, `resolve.scopes`). It mirrors
     // tsconfig.base.json's `paths` but WITHOUT the trailing extension those
     // carry: a mapped target is a template, so `pkg/x.js` against a `.ts`-suffixed
     // mapping would look for `x.ts` spelled `x.js.ts`. Keep these extensionless —

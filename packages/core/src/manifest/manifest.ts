@@ -1,8 +1,11 @@
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
+import * as SchemaIssue from "effect/SchemaIssue";
 
 import { DeclarationKind, ResolveConfig } from "../domain/architecture-config.js";
 import { ConfigInvalid } from "../domain/architecture-error.js";
+import type { ManifestLocator, ManifestPath } from "../domain/manifest-location.js";
+import { expandManifest, originOf, type Substitution } from "./expand.js";
 
 // A manifest is a tree of nodes keyed by path pattern, where everything the
 // architecture says about a part of the tree is written at that part of the tree.
@@ -286,7 +289,12 @@ export type ExportRestriction = typeof ExportRestriction.Type;
 export const globsOf = (globs: string | ReadonlyArray<string>): ReadonlyArray<string> =>
   typeof globs === "string" ? [globs] : globs;
 
-const decode = Schema.decodeUnknownResult(Manifest);
+// Every issue, not the first: a manifest is edited by hand, and the reader
+// fixing one line wants to know about the other three. A key the schema does
+// not declare is refused rather than dropped — a misspelled `matchNot` that
+// decoded to nothing would be a rule quietly enforcing less than it says.
+const decode = Schema.decodeUnknownResult(Manifest, { errors: "all", onExcessProperty: "error" });
+const flatten = SchemaIssue.makeFormatterStandardSchemaV1();
 
 export type DecodedManifest = {
   readonly manifest: Manifest;
@@ -392,17 +400,110 @@ const normalizeLegacyMembers = (
   return { input: { ...input, tree }, notices };
 };
 
+export type DecodeManifestOptions = {
+  // Turns a path in the file into a line and column. The YAML reader supplies
+  // one; a JavaScript module has no positions to give and passes nothing.
+  readonly locate?: ManifestLocator | undefined;
+};
+
+const isIdentifier = (key: string): boolean => /^[A-Za-z_$][\w$]*$/.test(key);
+
+// `tree["~/core/"].members[0].subject` — dotted where a key reads as a name,
+// bracketed where it does not, so a node key that is a path pattern stays
+// legible.
+const renderPath = (path: ManifestPath): string =>
+  path.length === 0
+    ? "(root)"
+    : path
+        .map((segment, index) => {
+          if (typeof segment === "number") return `[${String(segment)}]`;
+          const key = String(segment);
+          if (isIdentifier(key)) return index === 0 ? key : `.${key}`;
+          return `[${JSON.stringify(key)}]`;
+        })
+        .join("");
+
+const fileLabelOf = (configPath: string): string => configPath.split(/[\\/]/).at(-1) ?? configPath;
+
+const positionOf = (
+  file: string,
+  locate: ManifestLocator | undefined,
+  path: ManifestPath,
+): string | null => {
+  const found = locate?.(path) ?? null;
+  return found === null ? null : `${file}:${String(found.line)}:${String(found.column)}`;
+};
+
+// One line per issue: where in the file, which path, what was wrong — and,
+// when the value came in through a `use`, the reference that pulled it in,
+// since the fragment's own line may sit far from where the reader is looking.
+const describeIssue = (
+  configPath: string,
+  locate: ManifestLocator | undefined,
+  substitutions: ReadonlyArray<Substitution>,
+  path: ManifestPath,
+  detail: string,
+): string => {
+  const file = fileLabelOf(configPath);
+  const origin = originOf(substitutions, path);
+  const at = positionOf(file, locate, origin.path);
+  const via = origin.via.map(({ at: ref, name }) => {
+    const position = positionOf(file, locate, ref);
+    return `via \`use: ${JSON.stringify(name)}\`${position === null ? "" : ` at ${position}`}`;
+  });
+  return (
+    `  ${at === null ? "" : `${at}  `}${renderPath(origin.path)}: ${detail}` +
+    (via.length === 0 ? "" : ` (${via.join(", ")})`)
+  );
+};
+
+// The standard-schema formatter flattens the issue tree to `{ path, message }`
+// pairs; a path segment may arrive wrapped as `{ key }`.
+const pathOf = (issue: {
+  readonly path?: ReadonlyArray<PropertyKey | { readonly key: PropertyKey }> | undefined;
+}): ManifestPath =>
+  (issue.path ?? []).map((segment) => (typeof segment === "object" ? segment.key : segment));
+
 export const decodeManifest = (
   configPath: string,
   input: unknown,
+  options: DecodeManifestOptions = {},
 ): Result.Result<DecodedManifest, ConfigInvalid> => {
-  const resolve = normalizeLegacyResolve(input);
+  const expanded = expandManifest(input);
+  if (Result.isFailure(expanded)) {
+    return Result.fail(
+      new ConfigInvalid({
+        configPath,
+        detail:
+          "the manifest does not expand:\n" +
+          describeIssue(
+            configPath,
+            options.locate,
+            [],
+            expanded.failure.path,
+            expanded.failure.detail,
+          ),
+      }),
+    );
+  }
+  const { substitutions, value } = expanded.success;
+
+  const resolve = normalizeLegacyResolve(value);
   const members = normalizeLegacyMembers(resolve.input);
-  return Result.map(
-    Result.mapError(
-      decode(members.input),
-      (issue) => new ConfigInvalid({ configPath, detail: String(issue) }),
-    ),
-    (manifest) => ({ manifest, notices: [...resolve.notices, ...members.notices] }),
-  );
+  const decoded = decode(members.input);
+  if (Result.isFailure(decoded)) {
+    const lines = flatten(decoded.failure.issue).issues.map((issue) =>
+      describeIssue(configPath, options.locate, substitutions, pathOf(issue), issue.message),
+    );
+    return Result.fail(
+      new ConfigInvalid({
+        configPath,
+        detail: `the manifest does not decode:\n${lines.join("\n")}`,
+      }),
+    );
+  }
+  return Result.succeed({
+    manifest: decoded.success,
+    notices: [...resolve.notices, ...members.notices],
+  });
 };

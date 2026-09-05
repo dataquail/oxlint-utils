@@ -8,27 +8,23 @@ written in a declaration, and the names called. It is how a policy states a _voc
 set of names a stereotype is allowed to use — where the constraint is not about which modules
 are reached at all.
 
-```js
-"*.repository.ts": {
-  members: [
-    {
-      message:
-        'A repository port method named "{name}" is a query in disguise. A port ' +
-        "loads and saves an aggregate by identity; anything keyed on another " +
-        "column is a read model, and belongs in queries/.",
-      subject: "members",
-      declares: ["type", "interface"],
-      in: "*RepositoryShape",
-      match: "find*",
-      matchNot: ["findOneById", "findManyByIds"],
-    },
-  ],
-},
+```yaml
+"*.repository.ts":
+  members:
+    - message: >-
+        A repository port method named "{name}" is a query in disguise. A port
+        loads and saves an aggregate by identity; anything keyed on another
+        column is a read model, and belongs in queries/.
+      subject: members
+      declares: [type, interface]
+      in: "*RepositoryShape"
+      match: "find*"
+      matchNot: [findOneById, findManyByIds]
 ```
 
 | Field      | Meaning                                                              |
 | ---------- | -------------------------------------------------------------------- |
-| `subject`  | `"members"` or `"calls"`                                             |
+| `subject`  | `members` or `calls`                                                 |
 | `declares` | for `members`, which declaration kinds: `type`, `interface`, `class` |
 | `in`       | for `members`, globs against the declaration's own name              |
 | `match`    | names the rule is about. Omit to mean every name in that position    |
@@ -73,17 +69,13 @@ thing without it.
 Called identifiers and called members — `useState(0)` and `React.useEffect(fn)` both
 produce a site named for the callee:
 
-```js
-"*.view.tsx": {
-  members: [
-    {
-      message: "`{name}` puts state in the View. It belongs in the ViewModel.",
-      subject: "calls",
-      match: "use[A-Z]*",
-      allow: ["useAtomValue", "useAtomSet", "useAtomSuspense", "useId", "useCallback"],
-    },
-  ],
-},
+```yaml
+"*.view.tsx":
+  members:
+    - message: "`{name}` puts state in the View. It belongs in the ViewModel."
+      subject: calls
+      match: "use[A-Z]*"
+      allow: [useAtomValue, useAtomSet, useAtomSuspense, useId, useCallback]
 ```
 
 The `use[A-Z]*` pattern is the reason [character classes](/goodbones/architecture-rules/manifest/patterns/)
@@ -130,11 +122,10 @@ reporting nothing.
 An authored `probe` closes that: the snippet is parsed at load, and the rule must report
 `name` out of what the parser read, or the policy refuses to load.
 
-```js
-probe: {
-  source: "export type TodosRepositoryShape = { findOneByEmail(): void };",
-  name: "findOneByEmail",
-},
+```yaml
+probe:
+  source: "export type TodosRepositoryShape = { findOneByEmail(): void };"
+  name: findOneByEmail
 ```
 
 Write it in the shape your real ports take. See

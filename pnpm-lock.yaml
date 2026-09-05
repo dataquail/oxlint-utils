@@ -117,10 +117,16 @@ importers:
       effect:
         specifier: 4.0.0-beta.94
         version: 4.0.0-beta.94
+      yaml:
+        specifier: ^2.9.0
+        version: 2.9.0
     devDependencies:
       '@types/node':
         specifier: ^25.9.4
         version: 25.9.5
+      ajv:
+        specifier: ^8.20.0
+        version: 8.20.0
 
   packages/oxlint:
     dependencies:

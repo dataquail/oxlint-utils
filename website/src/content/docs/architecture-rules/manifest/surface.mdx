@@ -8,21 +8,15 @@ and how many there are. It is the other half of [`exports`](/goodbones/architect
 which says who may _import_ a name; this says what a file may _export_ in the first place. No
 module resolution is involved, so it is as cheap as `members`.
 
-```js
-"*.handler.ts": {
-  surface: [
-    {
-      message: "A handler exports exactly one function, and nothing else.",
-      declares: ["function"],
-      count: { min: 1, max: 1 },
-    },
-    {
-      message: "A handler's name is camelCase: `{name}` is not.",
-      kinds: ["named"],
-      convention: "camelCase",
-    },
-  ],
-},
+```yaml
+"*.handler.ts":
+  surface:
+    - message: "A handler exports exactly one function, and nothing else."
+      declares: [function]
+      count: { min: 1, max: 1 }
+    - message: "A handler's name is camelCase: `{name}` is not."
+      kinds: [named]
+      convention: camelCase
 ```
 
 Each entry has two halves. The **selectors** say which export sites the sentence is about;
@@ -76,19 +70,21 @@ which is a CommonJS surface.
 **No default exports.** A default export has no name to grep for, and two files can each call
 theirs something different.
 
-```js
-"src/": {
-  surface: [{ message: "No default exports; a name is greppable.", kinds: ["default"] }],
-},
+```yaml
+"src/":
+  surface:
+    - message: "No default exports; a name is greppable."
+      kinds: [default]
 ```
 
 **A barrel re-exports and declares nothing.** The public surface of a module is what its
 `index.ts` forwards, and a helper declared in the barrel is a helper with no home.
 
-```js
-"index.ts": {
-  surface: [{ message: "A barrel re-exports; `{name}` is declared here.", reexport: false }],
-},
+```yaml
+"index.ts":
+  surface:
+    - message: "A barrel re-exports; `{name}` is declared here."
+      reexport: false
 ```
 
 **No `export *`.** A star re-export takes every export of the target at once, and is how a
@@ -96,16 +92,19 @@ name restricted by [`exports`](/goodbones/architecture-rules/manifest/exports/) 
 through a barrel. That family can forbid it from the import side; this one forbids it where
 it is written, with no resolution needed.
 
-```js
-surface: [{ message: "Re-export by name, so the barrel says what the module is.", kinds: ["namespace"] }],
+```yaml
+surface:
+  - message: "Re-export by name, so the barrel says what the module is."
+    kinds: [namespace]
 ```
 
 **A test exports nothing.**
 
-```js
-"*.test.ts": {
-  surface: [{ message: "A test file exports nothing.", count: { max: 0 } }],
-},
+```yaml
+"*.test.ts":
+  surface:
+    - message: "A test file exports nothing."
+      count: { max: 0 }
 ```
 
 ## Probes
@@ -116,8 +115,9 @@ A `count` with neither `min` nor `max` is refused at load, since nothing could v
 
 An authored probe is a source snippet the rule must report something out of:
 
-```js
-probe: { source: "export default function main() {}" },
+```yaml
+probe:
+  source: "export default function main() {}"
 ```
 
 Written on a folder, `surface` covers the subtree, like `members`.

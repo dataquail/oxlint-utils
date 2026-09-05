@@ -1,6 +1,6 @@
 ---
 title: Installation
-description: Installing the plugin, wiring it into oxlint, and a first manifest that fires.
+description: Installing the plugin, wiring it into oxlint, a first manifest, and the editor reading it.
 ---
 
 ## Install
@@ -40,42 +40,47 @@ specifier and its five rules are enabled by id:
 
 `import/no-cycle` is oxlint's own, and it owns the one check a per-file rule cannot make.
 
-The plugin reads `architecture.config.mjs` from the repository root at module load, which
+The plugin reads the manifest from the repository root at module load — `architecture.yaml`
+by name, or one of the [other forms](/goodbones/architecture-rules/manifest/#formats) — which
 is also when it runs the [probe check](/goodbones/architecture-rules/enforcement/probes/). A
 malformed manifest or a vacuous rule fails there, loudly, rather than lowering to a policy
 that matches nothing.
 
 ## A first manifest
 
-```js
-// architecture.config.mjs
-/** @type {import("@goodbones/core").Manifest} */
-export default {
-  resolve: {
-    scopes: [{ files: "", language: "typescript", options: { tsconfig: "tsconfig.json" } }],
-    unresolved: "error",
-  },
-  aliases: {
-    "@": "src",
-  },
-  tree: {
-    "@/domain/": {
-      message: "domain/ is the model. It reaches nothing but itself.",
-      imports: {
-        message: "domain/ may not reach the framework.",
-        reset: true,
-        external: ["effect"],
-        allow: ["@/domain/**"],
-      },
-      children: {
-        "*.ts": {},
-      },
-    },
-  },
-};
+`architecture init` writes a starter: one open root, the adoption ceilings at zero, and a
+comment per section naming the page that explains it.
+
+```bash
+pnpm exec architecture init
 ```
 
-That is a complete policy. It says four things:
+Or write one by hand. This is a complete policy:
+
+```yaml
+# architecture.yaml
+# yaml-language-server: $schema=https://dataquail.github.io/goodbones/schema/architecture.schema.json
+resolve:
+  scopes:
+    - files: ""
+      language: typescript
+      options: { tsconfig: tsconfig.json }
+  unresolved: error
+aliases:
+  "@": src
+tree:
+  "@/domain/":
+    message: "domain/ is the model. It reaches nothing but itself."
+    imports:
+      message: "domain/ may not reach the framework."
+      reset: true
+      external: [effect]
+      allow: ["@/domain/**"]
+    children:
+      "*.ts": {}
+```
+
+It says four things:
 
 - `src/domain/` admits `.ts` files and nothing else.
 - Files there may import from `src/domain/`, and from `effect`.
@@ -95,6 +100,18 @@ rm src/domain/probe.ts
 This is the habit the whole package is built around, and it is automated two ways: the
 plugin's own load-time probe check, and the
 [`architecture` CLI](/goodbones/architecture-rules/enforcement/cli/).
+
+## The editor reads it too
+
+The first line of the manifest names its JSON Schema. Any editor with a YAML language server
+— VS Code's YAML extension, for one — completes every key from it and flags a misspelled one
+as you type, before the loader runs. The schema is generated from the codec that decodes the
+manifest, so what the editor accepts is what the loader accepts.
+
+What the editor misses, the loader reports with a file, line and column, and every issue at
+once rather than the first. A repository that would rather write the manifest as JavaScript
+can — see [Using a JavaScript manifest](/goodbones/architecture-rules/manifest/javascript/) —
+and gives up both of those to do so.
 
 ## Build before you lint
 

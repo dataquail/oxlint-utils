@@ -22,20 +22,20 @@ the nearest one above it.
 That is the mechanism behind the tightening you actually want, where each tier can only
 narrow:
 
-```js
-"~/server/src/": {
-  imports: { external: ["effect"], allow: ["~/server/src/**", "~/contracts/**"] },
-  children: {
-    "modules/{module}/": {
-      children: {
-        "domain/": {
-          // Narrower: the ancestor's allowances no longer apply.
-          imports: { reset: true, external: ["effect"], allow: ["@/modules/{module}/domain/**"] },
-        },
-      },
-    },
-  },
-},
+```yaml
+"~/server/src/":
+  imports:
+    external: [effect]
+    allow: ["~/server/src/**", "~/contracts/**"]
+  children:
+    "modules/{module}/":
+      children:
+        "domain/":
+          # Narrower: the ancestor's allowances no longer apply.
+          imports:
+            reset: true
+            external: [effect]
+            allow: ["@/modules/{module}/domain/**"]
 ```
 
 ## `members` and `surface` on a folder
@@ -52,14 +52,12 @@ A naming convention is inherited by the whole subtree, and a descendant that sta
 replaces it. There is no `reset` for naming, because a convention is a single value rather
 than a list: restating it _is_ the reset.
 
-```js
-"~/database/src/": {
-  name: { regex: "^(?:Database|[a-z0-9]+(?:-[a-z0-9]+)*)$" },
-  children: {
-    "migrations/": { name: "snake_case" },   // narrower, and stated
-    "**/": { name: "kebab-case" },
-  },
-},
+```yaml
+"~/database/src/":
+  name: { regex: "^(?:Database|[a-z0-9]+(?:-[a-z0-9]+)*)$" }
+  children:
+    "migrations/": { name: snake_case } # narrower, and stated
+    "**/": { name: kebab-case }
 ```
 
 ## Prohibitions only accumulate
@@ -93,12 +91,12 @@ Each is a distinct statement, each greppable, and none of them is silent.
 | -------------------- | ----------------------------------------------- | ---------------------------------- |
 | `reset: true`        | this tier states its own allowlist from scratch | all inherited prohibitions         |
 | `unrestricted: true` | this tier has no allowlist yet                  | all inherited prohibitions         |
-| `layout: "open"`     | this folder does not enumerate its file names   | its imports policy, its subfolders |
+| `layout: open`       | this folder does not enumerate its file names   | its imports policy, its subfolders |
 
 `unrestricted` is **required** whenever a node states `imports` without an `allow`. You
 cannot leave an allowlist off by accident; the manifest will not decode. That turns an
 untightened tier into a sentence someone wrote and a reviewer saw, and makes
-`grep -c unrestricted architecture.config.mjs` the adoption backlog.
+`grep -c unrestricted architecture.yaml` the adoption backlog.
 
 ## `partial: true`
 
@@ -107,17 +105,14 @@ rule, so its direct children are not checked against its `children` keys — but
 else it states still applies to its whole subtree, and its child nodes still compile their
 own rules normally:
 
-```js
-"src/": {
-  partial: true,
-  imports: { external: ["effect"], allow: ["src/**"] },   // ← still in force
-  children: {
-    "deep/": {
-      message: "deep/ admits only *.ok.ts",
-      children: { "*.ok.ts": {} },                        // ← still enforced
-    },
-  },
-},
+```yaml
+"src/":
+  partial: true
+  imports: { external: [effect], allow: ["src/**"] } # ← still in force
+  children:
+    "deep/":
+      message: "deep/ admits only *.ok.ts"
+      children: { "*.ok.ts": {} } # ← still enforced
 ```
 
 It is the incremental-adoption switch: bring one branch of a large repository under policy
@@ -131,6 +126,6 @@ root exists to catch — so it reports, with the node's own `message`.
 
 In practice that means `partial` fits a folder whose _subfolders_ are what you are
 describing. If the folder also holds loose files you are not ready to enumerate, reach for
-`layout: "open"` instead: it claims the folder, admits any filename, and suppresses the
+`layout: open` instead: it claims the folder, admits any filename, and suppresses the
 taxonomy root for that region.
 :::
