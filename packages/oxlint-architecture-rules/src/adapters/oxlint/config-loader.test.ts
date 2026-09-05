@@ -2,12 +2,13 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import * as Result from "effect/Result";
 import { afterAll, describe, expect, it } from "vitest";
 
 // Through the barrel on purpose: this is the package's public surface, and a
 // re-export that stops resolving is a break no internal test would notice.
 import { ConfigInvalid } from "../../index.js";
-import { loadPolicy } from "./config-loader.js";
+import { loadPolicyFromFile as loadPolicy } from "./config-loader.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../..");
 // Inside the package rather than the OS temp dir: Vitest resolves the loader's
@@ -31,7 +32,7 @@ const writeConfig = (source: string): string => {
   return path.join(scratch, name);
 };
 
-const RESOLVE = `resolve: { scopes: [{ files: "", tsconfig: "tsconfig.resolve.json" }] }`;
+const RESOLVE = `resolve: { scopes: [{ files: "", language: "typescript", options: { tsconfig: "tsconfig.resolve.json" } }] }`;
 
 // A one-node manifest: a domain folder that may reach only itself.
 const TREE = `tree: {
@@ -56,6 +57,44 @@ describe("loadPolicy", () => {
       "packages-server-src-modules-module-domain/imports",
     ]);
     expect(policy.resolver.resolve("packages/server/src/server.ts", "node:path")).toBeDefined();
+    expect(policy.notices).toEqual([]);
+  });
+
+  // The shape every manifest had before scopes named their language. It loads
+  // for the rest of the beta, and says once that it is on its way out.
+  it("reads a scope written as { files, tsconfig } as a TypeScript scope, with a notice", async () => {
+    const legacy = `resolve: { scopes: [{ files: "", tsconfig: "tsconfig.resolve.json" }], mainFields: ["main"] }`;
+    const policy = await loadPolicy(
+      repoRoot,
+      writeConfig(`export default { ${legacy}, ${TREE} };`),
+    );
+    expect(policy.config.resolve.scopes).toEqual([
+      {
+        files: "",
+        language: "typescript",
+        options: { tsconfig: "tsconfig.resolve.json", mainFields: ["main"] },
+      },
+    ]);
+    expect(policy.notices).toHaveLength(2);
+    expect(policy.notices[0]).toMatch(/resolve\.mainFields/);
+    expect(policy.notices[1]).toMatch(/resolve\.scopes\[0\]/);
+    expect(
+      Result.isSuccess(policy.resolver.resolve("packages/server/src/server.ts", "node:path")),
+    ).toBe(true);
+  });
+
+  it("refuses a scope whose language no loaded pack answers to, naming both", async () => {
+    const go = `resolve: { scopes: [{ files: "", language: "go" }] }`;
+    await expect(
+      loadPolicy(repoRoot, writeConfig(`export default { ${go}, ${TREE} };`)),
+    ).rejects.toThrow(/names the language "go".*\(loaded: typescript\)/);
+  });
+
+  it("refuses a TypeScript scope whose options it does not understand", async () => {
+    const typo = `resolve: { scopes: [{ files: "", language: "typescript", options: { tsconfig: "tsconfig.resolve.json", extension: [".ts"] } }] }`;
+    await expect(
+      loadPolicy(repoRoot, writeConfig(`export default { ${typo}, ${TREE} };`)),
+    ).rejects.toThrow(/extension/);
   });
 
   it("rejects a config whose shape does not decode", async () => {
@@ -95,17 +134,17 @@ describe("loadPolicy", () => {
 
   // The point of an authored probe. Both members rules below are written the
   // same way; only the snippet differs. The synthetic probe passes both. The
-  // real parser reads a member out of the interface and nothing out of the
-  // class body — so the second rule is refused at load, today, rather than
+  // real parser reads a member out of the interface and nothing out of an
+  // object literal — so the second rule is refused at load, today, rather than
   // silently enforcing nothing until someone widens the extractor.
-  const membersRuleWith = (probe: string) => `tree: {
+  const membersRuleWith = (probe: string, subject = `subject: "members"`) => `tree: {
     "packages/server/src/modules/{module}/domain/": {
       children: {
         "*.repository.ts": {
           members: [
             {
               message: 'Port method "{name}" is not in the vocabulary.',
-              subject: "type-members",
+              ${subject},
               in: "*RepositoryShape",
               allow: ["findOne"],
               probe: ${probe},
@@ -126,13 +165,47 @@ describe("loadPolicy", () => {
   });
 
   it("refuses a member rule whose source probe is a shape the parser does not read", async () => {
-    const probe = `{ source: "export class TodosRepositoryShape { findOneById(): void {} }", name: "findOneById" }`;
+    const probe = `{ source: "export const TodosRepositoryShape = { findOneById(): void {} };", name: "findOneById" }`;
     await expect(
       loadPolicy(
         repoRoot,
         writeConfig(`export default { ${RESOLVE}, ${membersRuleWith(probe)} };`),
       ),
     ).rejects.toThrow(/architecture facts/);
+  });
+
+  // A class body is read now, and `declares` is what keeps a rule about ports
+  // from speaking to it: the same probe passes a rule about every declaration
+  // and fails one about types and interfaces.
+  it("judges a class-body probe by the rule's `declares`", async () => {
+    const probe = `{ source: "export class TodosRepositoryShape { findOneById(): void {} }", name: "findOneById" }`;
+    const every = await loadPolicy(
+      repoRoot,
+      writeConfig(`export default { ${RESOLVE}, ${membersRuleWith(probe)} };`),
+    );
+    expect(every.memberRules).toHaveLength(1);
+
+    const typesOnly = `subject: "members", declares: ["type", "interface"]`;
+    await expect(
+      loadPolicy(
+        repoRoot,
+        writeConfig(`export default { ${RESOLVE}, ${membersRuleWith(probe, typesOnly)} };`),
+      ),
+    ).rejects.toThrow(/probe parsed by typescript/);
+  });
+
+  // The old spelling still loads, as the pair it always meant, and says so once.
+  it('reads `subject: "type-members"` as members declared in a type or interface, with a notice', async () => {
+    const probe = `{ source: "export interface TodosRepositoryShape { findOneById(): void }", name: "findOneById" }`;
+    const policy = await loadPolicy(
+      repoRoot,
+      writeConfig(
+        `export default { ${RESOLVE}, ${membersRuleWith(probe, `subject: "type-members"`)} };`,
+      ),
+    );
+    expect(policy.memberRules[0]?.subject).toBe("members");
+    expect(policy.memberRules[0]?.declares).toEqual(["type", "interface"]);
+    expect(policy.notices).toEqual([expect.stringMatching(/"\*\.repository\.ts".*type-members/)]);
   });
 
   it("checks an export restriction's source probe through the parser too", async () => {
@@ -262,7 +335,7 @@ describe("uncompilable patterns in the other three families", () => {
   // default is the CommonJS-ish shape a `.cjs` policy would produce.
   it("accepts a manifest that is the module itself rather than its default export", async () => {
     const at =
-      writeConfig(`export const resolve = { scopes: [{ files: "", tsconfig: "tsconfig.resolve.json" }] };
+      writeConfig(`export const resolve = { scopes: [{ files: "", language: "typescript", options: { tsconfig: "tsconfig.resolve.json" } }] };
 export const tree = { "packages/server/src/modules/{module}/domain/": { message: "m", imports: { message: "m", allow: ["packages/server/src/modules/{module}/domain/**"] }, children: { "*.root.ts": {} } } };`);
     const policy = await loadPolicy(repoRoot, at);
     expect(policy.importRules.length).toBeGreaterThan(0);

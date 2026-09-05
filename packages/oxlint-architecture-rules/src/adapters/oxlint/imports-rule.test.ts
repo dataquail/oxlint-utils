@@ -9,9 +9,10 @@ import { EMPTY_BASELINE, makeBaselineFilter } from "../../core/baseline.js";
 import { EMPTY_GRAPH_RULES } from "../../core/graph.js";
 import { compileImportRules } from "../../core/imports.js";
 import { EMPTY_STRUCTURE } from "../../core/structure.js";
+import { makeFactExtractorFake } from "../../infrastructure/fact-extractor-fake.js";
 import { makeFileSystemFake } from "../../infrastructure/file-system-fake.js";
 import { makeModuleResolverFake } from "../../infrastructure/module-resolver-fake.js";
-import type { LoadedPolicy } from "./config-loader.js";
+import type { LoadedPolicy } from "../../load/policy.js";
 import { makeImportsRule } from "./imports-rule.js";
 
 RuleTester.describe = describe;
@@ -21,7 +22,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../
 
 const config = {
   resolve: {
-    scopes: [{ files: "", tsconfig: "tsconfig.resolve.json" }],
+    scopes: [{ files: "", language: "typescript", options: { tsconfig: "tsconfig.resolve.json" } }],
     unresolved: "error" as const,
   },
   imports: [
@@ -53,11 +54,14 @@ const makePolicy = (): LoadedPolicy => {
     graph: EMPTY_GRAPH_RULES,
     adoption: { unrestricted: [], partial: [] },
     fileSystem: makeFileSystemFake([]),
+    languages: [],
+    extractor: makeFactExtractorFake({}),
     resolver: makeModuleResolverFake({
       "@org/database": "packages/database/src/index.ts",
       "@org/contracts/Policy": "packages/contracts/src/Policy.ts",
     }),
     ignoreUnresolved: [],
+    notices: [],
     baseline: makeBaselineFilter(EMPTY_BASELINE),
   };
 };

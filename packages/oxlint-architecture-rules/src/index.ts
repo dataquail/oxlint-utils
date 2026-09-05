@@ -9,13 +9,19 @@ export {
 } from "./core/imports.js";
 export {
   type DeclarationKind,
+  type ExportFix,
   type GraphConfig,
   type ImportRule,
   type ResolveConfig,
   type ResolveScope,
   type SurfaceRule,
 } from "./domain/architecture-config.js";
-export { ConfigInvalid, ImportUnresolved, PatternInvalid } from "./domain/architecture-error.js";
+export {
+  ConfigInvalid,
+  ImportUnresolved,
+  PatternInvalid,
+  ScopeInvalid,
+} from "./domain/architecture-error.js";
 export {
   type Binding,
   type ExportSite,
@@ -30,13 +36,27 @@ export {
 } from "./domain/violation.js";
 export { makeFactExtractorFake } from "./infrastructure/fact-extractor-fake.js";
 export { factsOfText, makeFactExtractorLive } from "./infrastructure/fact-extractor-live.js";
+export { makeFileSystemFake } from "./infrastructure/file-system-fake.js";
+export { makeFileSystemLive } from "./infrastructure/file-system-live.js";
+export { typescriptLanguage } from "./infrastructure/languages/typescript/index.js";
+export {
+  decodeTypescriptScopeOptions,
+  type TypescriptScopeOptions,
+} from "./infrastructure/languages/typescript/options.js";
+export { DEFAULT_CONFIG_FILENAME, readManifestFile } from "./infrastructure/manifest-file.js";
 export { makeModuleResolverFake } from "./infrastructure/module-resolver-fake.js";
 export { makeModuleResolverLive } from "./infrastructure/module-resolver-live.js";
+export { listSourceFiles, type WalkedLanguage } from "./infrastructure/walk.js";
+export { type LoadedPolicy, loadPolicy, type LoadPolicyInput } from "./load/policy.js";
 export { type LoweredRules, lowerManifest } from "./manifest/compile.js";
 export {
+  type DecodedManifest,
+  decodeManifest,
   type Manifest,
   type ManifestNode,
   Manifest as ManifestSchema,
 } from "./manifest/manifest.js";
 export { type FactExtractor } from "./ports/fact-extractor.js";
+export { type FileSystem } from "./ports/file-system.js";
+export { type Language } from "./ports/language.js";
 export { type ModuleResolver, type ResolvedTarget } from "./ports/module-resolver.js";

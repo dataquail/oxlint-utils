@@ -52,7 +52,13 @@ export default {
     // Only `packages/` is policed. The docs site is Astro, whose `astro:*`
     // virtual modules resolve to nothing on disk, and a scope that cannot
     // resolve its own imports would report noise rather than architecture.
-    scopes: [{ files: "^packages/", tsconfig: "tsconfig.resolve.json" }],
+    scopes: [
+      {
+        files: "^packages/",
+        language: "typescript",
+        options: { tsconfig: "tsconfig.resolve.json" },
+      },
+    ],
     // An import nobody can resolve is an import no rule can police. Loud by
     // default; anything listed here needs a reason next to it.
     unresolved: "error",
@@ -73,10 +79,36 @@ export default {
         "A live adapter is constructed once, where the package is composed. Everything else takes the port it satisfies, or the fake — which is what lets it be tested without a file system or a resolver.",
       module: "@arch/infrastructure/*-live.ts",
       symbols: ["makeFileSystemLive", "makeModuleResolverLive", "makeFactExtractorLive"],
-      except: ["@arch/adapters/oxlint/config-loader.ts", "@arch/index.ts", "**/*.test.ts"],
+      except: [
+        "@arch/adapters/oxlint/config-loader.ts",
+        "@arch/adapters/cli/config-loader.ts",
+        // A language pack is what assembles the live extractor and resolver
+        // for its language, so it is the one other place that may name them.
+        "@arch/infrastructure/languages/*/index.ts",
+        "@arch/index.ts",
+        "**/*.test.ts",
+      ],
       probe: {
         source: 'import { makeFileSystemLive } from "../infrastructure/file-system-live.js";',
         symbol: "makeFileSystemLive",
+      },
+    },
+    {
+      name: "language-packs-at-the-composition-root",
+      message:
+        "A language pack is constructed where the package is composed, and handed down as the `Language` port. Nothing in between names TypeScript — which is what lets a second language be added without editing the core.",
+      module: "@arch/infrastructure/languages/*/index.ts",
+      symbols: ["typescriptLanguage"],
+      except: [
+        "@arch/adapters/oxlint/config-loader.ts",
+        "@arch/adapters/cli/config-loader.ts",
+        "@arch/index.ts",
+        "**/*.test.ts",
+      ],
+      probe: {
+        source:
+          'import { typescriptLanguage } from "../infrastructure/languages/typescript/index.js";',
+        symbol: "typescriptLanguage",
       },
     },
     {
@@ -96,8 +128,10 @@ export default {
     unrestricted: 0,
     partial: 0,
     // Every folder here is `layout: "open"`, so structure is 0% enumerated and
-    // states no floor. The rest are the numbers on the day they were written.
-    coverage: { imports: 1, members: 0.39, surface: 0.98, graph: 0.61 },
+    // states no floor. The rest are the numbers on the day they were written
+    // (members: 26/67 on 2026-09-04, after the language pack and the npm
+    // package helper joined infrastructure/, which no members rule selects).
+    coverage: { imports: 1, members: 0.38, surface: 0.98, graph: 0.61 },
   },
 
   // The shape of the whole graph — evaluated by `architecture check`, which
@@ -126,10 +160,30 @@ export default {
       {
         name: "pure-tiers-reach-no-adapter",
         message:
-          "The pure tiers — domain, ports, core, manifest — reach no live implementation and no delivery adapter, through any number of hops. That is what makes them testable without one.",
-        from: ["@arch/domain/**", "@arch/ports/**", "@arch/core/**", "@arch/manifest/**"],
+          "The pure tiers — domain, ports, core, manifest, load — reach no live implementation and no delivery adapter, through any number of hops. That is what makes them testable without one.",
+        from: [
+          "@arch/domain/**",
+          "@arch/ports/**",
+          "@arch/core/**",
+          "@arch/manifest/**",
+          "@arch/load/**",
+        ],
         fromNot: "**/*.test.ts",
         to: ["@arch/infrastructure/*-live.ts", "@arch/adapters/**"],
+      },
+      {
+        name: "pure-tiers-reach-no-language-pack",
+        message:
+          "The pure tiers reach no language pack, through any number of hops. The manifest vocabulary is not TypeScript's; a second language is a second pack, not an edit to the core.",
+        from: [
+          "@arch/domain/**",
+          "@arch/ports/**",
+          "@arch/core/**",
+          "@arch/manifest/**",
+          "@arch/load/**",
+        ],
+        fromNot: "**/*.test.ts",
+        to: "@arch/infrastructure/languages/**",
       },
     ],
   },
@@ -190,7 +244,8 @@ export default {
                 {
                   message:
                     'A port member is a verb in camelCase: "{name}" is not. The port is the vocabulary every adapter must speak, and its case is part of the contract.',
-                  subject: "type-members",
+                  subject: "members",
+                  declares: ["type", "interface"],
                   allow: "[a-z]*",
                   probe: {
                     source:
@@ -239,11 +294,45 @@ export default {
               },
             },
 
+            "load/": {
+              message:
+                "load/ turns a manifest into a policy: decode, lower, compile, and probe every rule, with whatever language packs the host hands in. It composes the pure tiers and names no language and no live adapter.",
+              layout: "open",
+              children: {},
+              members: [NO_FILE_SYSTEM_CALLS],
+              imports: {
+                message:
+                  "load/ composes the pure tiers. It reaches the domain, the ports, the core, the manifest compiler and its own siblings; a live adapter or a language pack reaches it only as an argument.",
+                allow: [
+                  "@arch/domain/**",
+                  "@arch/ports/**",
+                  "@arch/core/**",
+                  "@arch/manifest/**",
+                  "@arch/load/**",
+                  "@arch/infrastructure/*-fake.ts",
+                ],
+              },
+            },
+
             "infrastructure/": {
               message:
                 "infrastructure/ implements the ports twice over: a live adapter for real work and a fake for tests. Nothing else in the package may name what it depends on.",
               layout: "open",
-              children: {},
+              children: {
+                "languages/": {
+                  message:
+                    "languages/ holds one pack per language: the extractor and the resolver for it, assembled behind the Language port. The rest of the package speaks the port and never the language.",
+                  layout: "open",
+                  children: {
+                    "{language}/": {
+                      message:
+                        "A language pack is one folder, named for its language, with an index.ts that assembles the pack.",
+                      layout: "open",
+                      children: {},
+                    },
+                  },
+                },
+              },
               imports: {
                 message:
                   "An adapter implements a port. It reaches the port it satisfies, the domain types in that signature, and its own siblings.",

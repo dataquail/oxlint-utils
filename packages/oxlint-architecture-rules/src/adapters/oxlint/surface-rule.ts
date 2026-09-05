@@ -6,7 +6,7 @@ import {
 } from "../../core/surface.js";
 import type { DeclarationKind } from "../../domain/architecture-config.js";
 import { formatMessage } from "../../domain/violation.js";
-import type { LoadedPolicy } from "./config-loader.js";
+import type { LoadedPolicy } from "../../load/policy.js";
 import {
   type OxlintRule,
   type ReportableNode,

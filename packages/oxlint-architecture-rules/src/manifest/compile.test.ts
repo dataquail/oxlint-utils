@@ -1,10 +1,19 @@
 import { describe, expect, it } from "vitest";
 
-import { lowerManifest } from "./compile.js";
+import { lowerManifest as lowerWith, type ProbeLanguage } from "./compile.js";
 import type { Manifest } from "./manifest.js";
 
+// Every manifest below is a TypeScript one, so its synthetic probes are `.ts`
+// files. The language is what says so; lowering itself never assumes it.
+const TYPESCRIPT: ReadonlyArray<ProbeLanguage> = [
+  { id: "typescript", extensions: [".ts", ".tsx"] },
+];
+const lowerManifest = (manifest: Manifest) => lowerWith(manifest, TYPESCRIPT);
+
 const base = (tree: Manifest["tree"]): Manifest => ({
-  resolve: { scopes: [{ files: "", tsconfig: "tsconfig.json" }] },
+  resolve: {
+    scopes: [{ files: "", language: "typescript", options: { tsconfig: "tsconfig.json" } }],
+  },
   aliases: { "@": "pkg/src" },
   tree,
 });
@@ -160,6 +169,67 @@ describe("import policy scope", () => {
   // that can never report is the vacuity this package exists to prevent.
   it("emits nothing for a node whose allowlist admits everything", () => {
     expect(lowered.imports.some((rule) => rule.name.includes("*.test.ts"))).toBe(false);
+  });
+});
+
+describe("external", () => {
+  const lowered = lowerManifest(
+    base({
+      "@/domain/": {
+        imports: {
+          message: "domain/ reaches itself and the runtime.",
+          external: ["effect", "@scope/name"],
+          allow: ["@/domain/**"],
+        },
+        children: {
+          "*.root.ts": {},
+          "pure/": {
+            imports: { message: "no runtime here.", reset: true, allow: ["@/domain/pure/**"] },
+            children: { "*.ts": {} },
+          },
+          "adapters/": {
+            imports: { message: "and the driver.", external: ["pg"], allow: ["@/domain/**"] },
+            children: { "*.ts": {} },
+          },
+        },
+      },
+    }),
+  );
+
+  // The package is judged by its name and never by where the resolver found
+  // it, so lowering carries the names through untouched — no path pattern is
+  // written for an external.
+  it("carries package names onto the rule, not a path pattern", () => {
+    const rule = ruleNamed(lowered.imports, "domain/imports");
+    expect(rule.externals).toEqual(["effect", "@scope/name"]);
+    const toNot = (rule.toNot ?? []) as ReadonlyArray<string>;
+    expect(toNot.some((one) => one.includes("node_modules"))).toBe(false);
+  });
+
+  it("inherits and accumulates down the tree, and reset drops the inheritance", () => {
+    expect(ruleNamed(lowered.imports, "domain/adapters/imports").externals).toEqual([
+      "effect",
+      "@scope/name",
+      "pg",
+    ]);
+    expect(ruleNamed(lowered.imports, "domain/pure/imports").externals).toBeUndefined();
+  });
+
+  // A tier that names only its runtime has an allowlist — one that admits no
+  // repository file at all.
+  it("counts a node with externals and no allow as having an allowlist", () => {
+    const runtimeOnly = lowerManifest(
+      base({
+        "@/scripts/": {
+          layout: "open",
+          children: {},
+          imports: { message: "scripts reach only the runtime.", external: ["effect"] },
+        },
+      }),
+    );
+    const rule = ruleNamed(runtimeOnly.imports, "scripts/imports");
+    expect(rule.externals).toEqual(["effect"]);
+    expect(rule.toNot).toEqual([]);
   });
 });
 
@@ -651,7 +721,8 @@ describe("member rules", () => {
               members: [
                 {
                   message: "Not in the vocabulary.",
-                  subject: "type-members",
+                  subject: "members",
+                  declares: ["type", "interface"],
                   in: "*RepositoryShape",
                   allow: ["findOne"],
                   probe: {
@@ -671,6 +742,24 @@ describe("member rules", () => {
     expect(rule?.probe.source).toBe("export type X = { findOneById(): void };");
     expect(rule?.probe.in).toBeUndefined();
     expect(rule?.probe.from).toMatch(/\.repository\.ts$/);
+    expect(rule?.declares).toEqual(["type", "interface"]);
+  });
+
+  // The synthetic probe must be a site the rule speaks to, so it is declared
+  // in the first kind the rule names.
+  it("declares the synthetic probe in the first kind the rule names", () => {
+    const lowered = lowerManifest(
+      base({
+        "@/domain/": {
+          layout: "open",
+          children: {},
+          members: [
+            { message: "…", subject: "members", declares: ["class", "interface"], in: "*Shape" },
+          ],
+        },
+      }),
+    );
+    expect(lowered.members[0]?.probe.declares).toBe("class");
   });
 });
 
@@ -760,5 +849,96 @@ describe("naming edge cases", () => {
     const [rule] = one({ name: convention, children: { "*.ts": {} } });
     expect(rule?.message).toContain(convention);
     expect(rule?.convention).toBeDefined();
+  });
+});
+
+describe("probe files and the language", () => {
+  const GO: ReadonlyArray<ProbeLanguage> = [{ id: "go", extensions: [".go"] }];
+  const goManifest: Manifest = {
+    resolve: { scopes: [{ files: "^svc/", language: "go" }] },
+    graph: {
+      orphans: [{ name: "no-orphans", message: "…", within: "svc/**", entry: "svc/main.go" }],
+    },
+    tree: {
+      "svc/": {
+        children: {
+          "main.go": {},
+          "domain/": {
+            imports: { message: "domain reaches itself.", allow: ["svc/domain/**"] },
+            children: { "*.go": {} },
+          },
+        },
+      },
+    },
+  };
+  const lowered = lowerWith(goManifest, GO);
+
+  // The whole point: nothing in lowering spells `.ts`. A scope in another
+  // language gets probes that are files of that language.
+  it("writes every synthetic probe as a file of the scope's language", () => {
+    expect(ruleNamed(lowered.imports, "svc/domain/imports").probe.from).toBe(
+      "svc/domain/zzprobe.go",
+    );
+    // The target the allowlist must refuse is a file of the importer's own
+    // language — an allowlist admitting `**/*.go` would otherwise pass its
+    // probe while admitting every Go file.
+    expect(ruleNamed(lowered.imports, "svc/domain/imports").probe.to).toBe(
+      "packages/zzprobe/nowhere.go",
+    );
+    expect(ruleNamed(lowered.structure.roots, "svc/taxonomy").probe.path).toBe(
+      "svc/zzprobe/stray.go",
+    );
+    expect(lowered.graph.orphans?.[0]?.probe.files).toEqual(["svc/deep/zz-orphan.go"]);
+  });
+
+  it("proves a folder's layout with a basename the folder rejects", () => {
+    const domain = ruleNamed(lowered.structure.folders, "svc/domain/layout");
+    const admitted = (basename: string) =>
+      (domain.files as ReadonlyArray<string>).some((one) => new RegExp(one).test(basename));
+    const stray = domain.probe.path.split("/").pop() ?? "";
+    expect(admitted("thing.go")).toBe(true);
+    expect(admitted(stray)).toBe(false);
+  });
+
+  // A folder that admits every `.ts` file still rejects a `.js` one, so it
+  // states a policy — and its probe has to be a name it rejects, which
+  // `zzprobe-stray.ts` is not.
+  it("proves a folder whose children are `*.ts` with a name outside that shape", () => {
+    const one = lowerManifest(base({ "@/lib/": { children: { "*.ts": {} } } }));
+    const rule = ruleNamed(one.structure.folders, "lib/layout");
+    expect(rule.probe.path).toBe("pkg/src/lib/zzprobe-stray");
+  });
+
+  it("refuses a folder that admits every name without saying `layout: open`", () => {
+    expect(() => lowerManifest(base({ "@/lib/": { children: { "*": {} } } }))).toThrow(
+      /admits every file name/,
+    );
+  });
+
+  it("gives a probe no extension where no scope's language is known", () => {
+    const unknown = lowerWith(base({ "@/lib/": { children: { "*.ts": {} } } }), []);
+    expect(ruleNamed(unknown.structure.roots, "@/lib/taxonomy").probe.path).toBe(
+      "pkg/src/lib/zzprobe/stray",
+    );
+  });
+
+  // A graph scope may name a file shape rather than a folder; the probe is
+  // then a file of that shape, not a file beneath it.
+  it("fills a file-shaped graph scope in place, keeping its extension", () => {
+    const one = lowerManifest({
+      ...base({}),
+      graph: {
+        cycles: [{ name: "c", message: "…", within: "@/**/*.ts" }],
+        reach: [{ name: "r", message: "…", from: "@/a/*.root.ts", to: "@/b/**" }],
+      },
+    });
+    expect(one.graph.cycles?.[0]?.probe.edges[0]).toEqual([
+      "pkg/src/deep/zz-alpha.ts",
+      "pkg/src/deep/zz-beta.ts",
+    ]);
+    expect(one.graph.reach?.[0]?.probe.edges[0]).toEqual([
+      "pkg/src/a/zz-origin.root.ts",
+      "pkg/src/b/deep/zz-target.ts",
+    ]);
   });
 });

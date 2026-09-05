@@ -47,7 +47,7 @@ const Imports = Schema.Struct({
 });
 
 // Inbound: who may reach this part of the tree. Four of the rules governing
-// `domain/` are of this shape — "*.root-ops.ts is private to command handlers" —
+// `domain/` are of this shape — "a root-ops file is private to command handlers" —
 // and stating them here is what stops them being a distant rule with a growing
 // exclusion list on its `from` side.
 const ImportedBy = Schema.Struct({
@@ -83,8 +83,11 @@ const MemberProbe = Schema.Struct({
 
 const Members = Schema.Struct({
   message: Schema.String,
-  subject: Schema.Literals(["type-members", "calls"]),
+  subject: Schema.Literals(["members", "calls"]),
   in: Schema.optionalKey(Globs),
+  // `members` only: which declarations are read — `type`, `interface`,
+  // `class`. Omit for every kind.
+  declares: Schema.optionalKey(Schema.Array(DeclarationKind)),
   match: Schema.optionalKey(Globs),
   matchNot: Schema.optionalKey(Globs),
   allow: Schema.optionalKey(Globs),
@@ -285,11 +288,121 @@ export const globsOf = (globs: string | ReadonlyArray<string>): ReadonlyArray<st
 
 const decode = Schema.decodeUnknownResult(Manifest);
 
+export type DecodedManifest = {
+  readonly manifest: Manifest;
+  // Things the manifest said in a form that still loads but is on its way out.
+  // The host prints them; nothing else acts on them.
+  readonly notices: ReadonlyArray<string>;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const isList = (value: unknown): value is ReadonlyArray<unknown> => Array.isArray(value);
+
+// The three resolver options that used to sit on `resolve` itself, when every
+// scope was a TypeScript scope and there was nowhere else to put them.
+const LEGACY_RESOLVER_OPTIONS = ["extensions", "conditionNames", "mainFields"] as const;
+
+// Until this beta ends, a scope written as `{ files, tsconfig }` is read as a
+// TypeScript scope with `options: { tsconfig }`, and resolver options on
+// `resolve` itself are folded into every TypeScript scope. Rewritten here, on
+// the raw input, so the schema itself never has to know the old shape.
+const normalizeLegacyResolve = (
+  input: unknown,
+): { readonly input: unknown; readonly notices: ReadonlyArray<string> } => {
+  if (!isRecord(input) || !isRecord(input.resolve) || !isList(input.resolve.scopes)) {
+    return { input, notices: [] };
+  }
+  const resolve = input.resolve;
+  const rawScopes = input.resolve.scopes;
+  const notices: Array<string> = [];
+
+  const hoisted = Object.fromEntries(
+    LEGACY_RESOLVER_OPTIONS.flatMap((key) => (key in resolve ? [[key, resolve[key]]] : [])),
+  );
+  if (Object.keys(hoisted).length > 0) {
+    notices.push(
+      `resolve.${Object.keys(hoisted).join(", resolve.")} on \`resolve\` itself is deprecated: ` +
+        `these are TypeScript resolver options, and belong in a TypeScript scope's \`options\`.`,
+    );
+  }
+
+  const scopes = rawScopes.map((scope, index) => {
+    if (!isRecord(scope)) return scope;
+    const { tsconfig, ...rest } = scope;
+    if (tsconfig === undefined || "language" in scope) {
+      return scope.language === "typescript" &&
+        Object.keys(hoisted).length > 0 &&
+        isRecord(scope.options)
+        ? { ...scope, options: { ...hoisted, ...scope.options } }
+        : scope;
+    }
+    notices.push(
+      `resolve.scopes[${String(index)}] names a \`tsconfig\` with no \`language\`. That shape is ` +
+        `deprecated: write { files, language: "typescript", options: { tsconfig } }.`,
+    );
+    return { ...rest, language: "typescript", options: { ...hoisted, tsconfig } };
+  });
+
+  const { conditionNames: _c, extensions: _e, mainFields: _m, ...restOfResolve } = resolve;
+  return { input: { ...input, resolve: { ...restOfResolve, scopes } }, notices };
+};
+
+// Until this beta ends, `subject: "type-members"` reads as `subject: "members"`
+// with `declares: ["type", "interface"]` — the TypeScript split between types
+// and values, which the vocabulary no longer carries. Rewritten on the raw
+// tree, so the schema itself never has to know the old name.
+const normalizeLegacyMembers = (
+  input: unknown,
+): { readonly input: unknown; readonly notices: ReadonlyArray<string> } => {
+  if (!isRecord(input) || !isRecord(input.tree)) return { input, notices: [] };
+  const notices: Array<string> = [];
+
+  const node = (key: string, value: unknown): unknown => {
+    if (!isRecord(value)) return value;
+    const members = isList(value.members)
+      ? value.members.map((spec) => {
+          if (!isRecord(spec) || spec.subject !== "type-members") return spec;
+          notices.push(
+            `"${key}" has a members rule with \`subject: "type-members"\`. That name is ` +
+              `deprecated: write \`subject: "members", declares: ["type", "interface"]\`.`,
+          );
+          return { ...spec, subject: "members", declares: spec.declares ?? ["type", "interface"] };
+        })
+      : value.members;
+    const children = isRecord(value.children)
+      ? Object.fromEntries(
+          Object.entries(value.children).map(([childKey, child]) => [
+            childKey,
+            node(childKey, child),
+          ]),
+        )
+      : value.children;
+    return {
+      ...value,
+      ...(members === undefined ? {} : { members }),
+      ...(children === undefined ? {} : { children }),
+    };
+  };
+
+  const tree = Object.fromEntries(
+    Object.entries(input.tree).map(([key, value]) => [key, node(key, value)]),
+  );
+  return { input: { ...input, tree }, notices };
+};
+
 export const decodeManifest = (
   configPath: string,
   input: unknown,
-): Result.Result<Manifest, ConfigInvalid> =>
-  Result.mapError(
-    decode(input),
-    (issue) => new ConfigInvalid({ configPath, detail: String(issue) }),
+): Result.Result<DecodedManifest, ConfigInvalid> => {
+  const resolve = normalizeLegacyResolve(input);
+  const members = normalizeLegacyMembers(resolve.input);
+  return Result.map(
+    Result.mapError(
+      decode(members.input),
+      (issue) => new ConfigInvalid({ configPath, detail: String(issue) }),
+    ),
+    (manifest) => ({ manifest, notices: [...resolve.notices, ...members.notices] }),
   );
+};

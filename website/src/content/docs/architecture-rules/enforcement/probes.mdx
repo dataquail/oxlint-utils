@@ -63,7 +63,8 @@ the rule must report out of it.
   members: [
     {
       message: 'Port method "{name}" is not in the vocabulary.',
-      subject: "type-members",
+      subject: "members",
+      declares: ["type", "interface"],
       in: "*RepositoryShape",
       allow: ["findOneById", "save"],
       probe: {

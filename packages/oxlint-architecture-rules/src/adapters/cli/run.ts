@@ -22,10 +22,10 @@ import { evaluateStructure, requiredSiblingsOf } from "../../core/structure.js";
 import { evaluateSurface, surfaceRulesSelecting } from "../../core/surface.js";
 import type { SourceFacts } from "../../domain/facts.js";
 import { fingerprintOf, formatMessage, type Violation } from "../../domain/violation.js";
-import { type LoadedPolicy, loadPolicy } from "../oxlint/config-loader.js";
+import { listSourceFiles } from "../../infrastructure/walk.js";
+import { type LoadedPolicy, loadPolicyFromFile } from "./config-loader.js";
 import { buildGraph } from "./graph.js";
 import { sourceFactsOf } from "./source-facts.js";
-import { listSourceFiles } from "./source-files.js";
 
 // The policy, run with no linter in the loop.
 //
@@ -50,7 +50,7 @@ export type Findings = {
 };
 
 export const collectFindings = (policy: LoadedPolicy, roots: ReadonlyArray<string>): Findings => {
-  const files = listSourceFiles(policy.repoRoot, roots);
+  const files = listSourceFiles(policy.repoRoot, roots, policy.languages);
   const violations: Array<Violation> = [];
   const unresolved: Array<string> = [];
 
@@ -60,7 +60,7 @@ export const collectFindings = (policy: LoadedPolicy, roots: ReadonlyArray<strin
   const factsOf = (file: string): SourceFacts => {
     const cached = parsed.get(file);
     if (cached !== undefined) return cached;
-    const facts = sourceFactsOf(policy.repoRoot, file);
+    const facts = sourceFactsOf(policy.repoRoot, file, policy.extractor);
     parsed.set(file, facts);
     return facts;
   };
@@ -193,7 +193,10 @@ export const check = (
     const shortfalls =
       floors === undefined
         ? []
-        : coverageShortfalls(coverageOf(policy, listSourceFiles(policy.repoRoot, roots)), floors);
+        : coverageShortfalls(
+            coverageOf(policy, listSourceFiles(policy.repoRoot, roots, policy.languages)),
+            floors,
+          );
     if (shortfalls.length > 0) {
       yield* report([
         "",
@@ -222,7 +225,7 @@ export const coverage = (
   roots: ReadonlyArray<string>,
 ): Effect.Effect<void, CliFailure> =>
   Effect.gen(function* () {
-    const files = listSourceFiles(policy.repoRoot, roots);
+    const files = listSourceFiles(policy.repoRoot, roots, policy.languages);
     const found = coverageOf(policy, files);
     const fractions = fractionsOf(found);
     const floors = policy.config.limits?.coverage ?? {};
@@ -343,6 +346,7 @@ export const explain = (policy: LoadedPolicy, file: string): Effect.Effect<void,
       ...allowlists.flatMap(([rule]) => [
         `    — ${rule.name}`,
         ...rule.toNot.map((pattern) => `        ${pattern}`),
+        ...[...rule.externals].map((name) => `        external: ${name}`),
       ]),
       "",
       "  may not import:",
@@ -385,7 +389,7 @@ export const facts = (
       .replaceAll(path.sep, "/");
 
     const read = yield* Effect.try({
-      try: () => sourceFactsOf(policy.repoRoot, relative),
+      try: () => sourceFactsOf(policy.repoRoot, relative, policy.extractor),
       catch: (cause) => fail(`could not read ${relative}: ${String(cause)}`),
     });
 
@@ -393,7 +397,7 @@ export const facts = (
       specifier,
       bindings: read.bindings.get(specifier) ?? [],
     }));
-    const declared = read.memberSites.filter((site) => site.subject === "type-members");
+    const declared = read.memberSites.filter((site) => site.subject === "members");
     const called = read.memberSites.filter((site) => site.subject === "calls");
 
     if (format === "json") {
@@ -417,8 +421,8 @@ export const facts = (
           : bindings.map((binding) => `        ${binding.kind.padEnd(9)} ${binding.symbol}`)),
       ]),
       "",
-      declared.length === 0 ? "  type-members: (none)" : "  type-members:",
-      ...declared.map((site) => `    ${site.in ?? ""}.${site.name}`),
+      declared.length === 0 ? "  members: (none)" : "  members:",
+      ...declared.map((site) => `    ${site.in ?? ""}.${site.name}  (${site.declares ?? "other"})`),
       "",
       called.length === 0 ? "  calls: (none)" : "  calls:",
       ...called.map((site) => `    ${site.name}`),
@@ -438,8 +442,11 @@ export const run = (
   Effect.gen(function* () {
     const [command = "check", ...rest] = argv;
     const policy = yield* Effect.tryPromise({
-      try: () => loadPolicy(repoRoot),
+      try: () => loadPolicyFromFile(repoRoot),
       catch: (cause) => fail(String(cause)),
+    });
+    yield* Effect.sync(() => {
+      for (const notice of policy.notices) process.stderr.write(`deprecated: ${notice}\n`);
     });
 
     const roots = rest.length > 0 ? rest : ["packages"];

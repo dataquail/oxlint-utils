@@ -171,9 +171,10 @@ const dirnameOf = (file: string): string => {
 
 const basenameOf = (file: string): string => file.slice(file.lastIndexOf("/") + 1);
 
-// `{base}` is the filename minus its FINAL extension, so `create-todo.handler.ts`
-// yields `create-todo.handler` and `{base}.test.ts` names its sibling test. The
-// dot-delimited stereotype stays part of the base on purpose.
+// `{base}` is the filename minus its FINAL extension — `create-todo.handler` for
+// `create-todo.handler.ts`, `handler` for `handler.go` — so `{base}.test.ts` or
+// `{base}_test.go` names the sibling test. The dot-delimited stereotype stays
+// part of the base on purpose.
 const baseOf = (basename: string): string => {
   const cut = basename.lastIndexOf(".");
   return cut <= 0 ? basename : basename.slice(0, cut);
@@ -327,7 +328,7 @@ export const structureRulesFailingTheirProbe = (
 
   const layoutOnly = { ...structure, parity: [] };
   const reported = (file: string): ReadonlyArray<string> =>
-    evaluateStructure(layoutOnly, { exists: () => true }, file).map(
+    evaluateStructure(layoutOnly, { exists: () => true, readText: () => null }, file).map(
       (violation) => violation.ruleName,
     );
 

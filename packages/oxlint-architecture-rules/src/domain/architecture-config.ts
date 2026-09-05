@@ -13,11 +13,18 @@ const PatternList = Schema.Union([Schema.String, Schema.Array(Schema.String)]);
 // A synthetic edge this rule must report. Every rule carries one: a configured
 // rule that reports nothing is indistinguishable from a clean codebase, and that
 // is the failure this package exists to make impossible. `from` is a repo-relative
-// importer path, `to` a repo-relative RESOLVED target (a `node_modules/...` path
-// for an external, `node:<name>` for a builtin).
+// importer path. `to` is the target in one of three forms, and the form is its
+// dependency kind: a repo-relative resolved path is `local`, `{ external }`
+// names a third-party package, `{ builtin }` names a runtime module.
+const ImportProbeTarget = Schema.Union([
+  Schema.String,
+  Schema.Struct({ external: Schema.String }),
+  Schema.Struct({ builtin: Schema.String }),
+]);
+
 const ImportProbe = Schema.Struct({
   from: Schema.String,
-  to: Schema.String,
+  to: ImportProbeTarget,
 });
 
 export const ImportRule = Schema.Struct({
@@ -28,29 +35,41 @@ export const ImportRule = Schema.Struct({
   fromNot: Schema.optionalKey(PatternList),
   to: Schema.optionalKey(PatternList),
   toNot: Schema.optionalKey(PatternList),
-  // `external` is a target inside node_modules, `builtin` a node: module,
-  // `local` anything else. Replaces dependency-cruiser's `dependencyTypes`,
+  // Third-party packages this rule permits, by package name. An external
+  // target is judged by its package, never by where the language's resolver
+  // happened to find it on disk — `to`/`toNot` patterns are for the
+  // repository's own files.
+  externals: Schema.optionalKey(Schema.Array(Schema.String)),
+  // `external` is a third-party package, `builtin` a runtime module, `local`
+  // anything in the repository. Compared against what the resolver reports,
+  // never read off a path. Replaces dependency-cruiser's `dependencyTypes`,
   // whose finer npm grades no rule in this repo distinguishes.
   dependencyKind: Schema.optionalKey(Schema.Literals(["external", "local", "builtin"])),
 });
 
-// Resolution is tsconfig-driven, and this monorepo needs two: the web/components
-// pass resolves `@/*` and `@org/components/*` that the server pass does not.
+// Which language pack resolves and parses the files a scope covers. A monorepo
+// needs several scopes even in one language — the web pass resolves `@/*` the
+// server pass does not — and a second language is one more scope. `options`
+// belong to the language: the policy carries them opaquely and the pack
+// validates them at load, so nothing here knows what a tsconfig is.
 const ResolveScope = Schema.Struct({
+  // A regular-expression source matched against the importing file's path.
   files: Schema.String,
-  tsconfig: Schema.String,
+  language: Schema.String,
+  options: Schema.optionalKey(Schema.Unknown),
 });
 
 export const ResolveConfig = Schema.Struct({
   scopes: Schema.Array(ResolveScope),
-  extensions: Schema.optionalKey(Schema.Array(Schema.String)),
-  conditionNames: Schema.optionalKey(Schema.Array(Schema.String)),
-  mainFields: Schema.optionalKey(Schema.Array(Schema.String)),
   // An edge nobody can resolve is an edge no rule can police, which is the
   // silent-vacuity failure this whole package exists to prevent. Default loud.
   unresolved: Schema.optionalKey(Schema.Literals(["error", "off"])),
   ignoreUnresolved: Schema.optionalKey(Schema.Array(Schema.String)),
 });
+
+// The autofix strategies a rule may name. Each is a rewrite in one language's
+// module syntax, so a language pack lists the ones it implements.
+export const ExportFix = Schema.Literals(["subpath-namespace-import"]);
 
 // Which binding form an import site used. A rule that fences off a factory
 // function cares about `named`; one steering people to namespace subpath imports
@@ -87,28 +106,51 @@ export const ExportRule = Schema.Struct({
   // Defaults to ["named"] — the discriminating form for every rule of this shape
   // written so far.
   kinds: Schema.optionalKey(Schema.Array(BindingKind)),
-  // A named autofix strategy. `subpath-namespace-import` rewrites
-  // `import { A, B as C } from "pkg"` into `import * as A from "pkg/A"` /
-  // `import * as C from "pkg/B"`, for packages that publish each module as its own
-  // subpath. A rule carrying a fix reports once per declaration rather than once
-  // per symbol, because the fix rewrites the whole declaration.
-  fix: Schema.optionalKey(Schema.Literals(["subpath-namespace-import"])),
+  // A named autofix strategy, which a language pack may or may not implement:
+  // the loader refuses a rule naming one no loaded language does.
+  // `subpath-namespace-import` is an ES-module rewrite — `import { A, B as C }
+  // from "pkg"` into `import * as A from "pkg/A"` / `import * as C from "pkg/B"`,
+  // for packages that publish each module as its own subpath. A rule carrying a
+  // fix reports once per declaration rather than once per symbol, because the
+  // fix rewrites the whole declaration.
+  fix: Schema.optionalKey(ExportFix),
 });
 
-// What kind of declared name a rule is about. `type-members` are the members
-// written in a named type declaration — an alias or an interface, through
-// intersections and unions — (a port's method vocabulary); `calls` are called
-// identifiers (the hooks a tier may reach for).
-const MemberSubject = Schema.Literals(["type-members", "calls"]);
+// What a name was declared as. For an export site, the declaration that
+// introduced it; for a member site, the declaration it is written in.
+// `expression` is `export default <expr>`; `other` covers a namespace, an
+// `export =`, and a re-export, whose declaration is somewhere else. A second
+// language will want `struct`, `record`, `constant`, `module` here; they are
+// added with the pack that reads them, not before.
+export const DeclarationKind = Schema.Literals([
+  "function",
+  "class",
+  "variable",
+  "type",
+  "interface",
+  "enum",
+  "expression",
+  "other",
+]);
+
+// What kind of name a rule is about. `members` are the names written in a
+// named declaration — a type alias, an interface, a class body — under that
+// declaration's name (a port's method vocabulary); `calls` are called
+// identifiers (the hooks a tier may reach for). Which declarations a `members`
+// rule speaks to is `declares`' to say, so the vocabulary carries no language's
+// split between types and values.
+const MemberSubject = Schema.Literals(["members", "calls"]);
 
 // `source`, when present, is a snippet the loading adapter parses: the probe
 // then holds only if a site named `name` comes out of the parser and the rule
 // reports it — the declaration shape is the parser's to judge, not `in`'s.
-// Without it the probe is a synthetic site of `name` inside `in`.
+// Without it the probe is a synthetic site of `name` inside `in`, declared as
+// `declares`.
 const MemberProbe = Schema.Struct({
   from: Schema.String,
   name: Schema.String,
   in: Schema.optionalKey(Schema.String),
+  declares: Schema.optionalKey(DeclarationKind),
   source: Schema.optionalKey(Schema.String),
 });
 
@@ -122,8 +164,11 @@ export const MemberRule = Schema.Struct({
   from: PatternList,
   fromNot: Schema.optionalKey(PatternList),
   subject: MemberSubject,
-  // `type-members` only: which declaration's members are governed.
+  // `members` only: which declaration's members are governed, by its name.
   in: Schema.optionalKey(PatternList),
+  // `members` only: which kinds of declaration are governed. Omit for every
+  // kind — a type alias, an interface and a class body alike.
+  declares: Schema.optionalKey(Schema.Array(DeclarationKind)),
   // Which names the rule speaks to at all. Omit for "every one".
   match: Schema.optionalKey(PatternList),
   matchNot: Schema.optionalKey(PatternList),
@@ -131,20 +176,6 @@ export const MemberRule = Schema.Struct({
   // the violation.
   allow: Schema.optionalKey(PatternList),
 });
-
-// What an exported name was declared as, when it was declared in the file.
-// `expression` is `export default <expr>`; `other` covers a namespace, an
-// `export =`, and a re-export, whose declaration is somewhere else.
-export const DeclarationKind = Schema.Literals([
-  "function",
-  "class",
-  "variable",
-  "type",
-  "interface",
-  "enum",
-  "expression",
-  "other",
-]);
 
 // One export site, as a probe states it: the name (`default` for a default
 // export, `*` for `export *`), its binding kind, and optionally what it was
@@ -274,8 +305,9 @@ const StructureParity = Schema.Struct({
   file: PatternList,
   fileNot: Schema.optionalKey(PatternList),
   // Paths that must exist, relative to the file's own folder. `{base}` is the
-  // filename minus its final extension, so `{base}.test.ts` beside
-  // `create-todo.handler.ts` means `create-todo.handler.test.ts`.
+  // filename minus its final extension — `create-todo.handler` for
+  // `create-todo.handler.ts`, `handler` for `handler.go` — so `{base}.test.ts`
+  // or `{base}_test.go` names the sibling test in either language.
   requires: Schema.Array(Schema.String),
 });
 
@@ -308,9 +340,11 @@ export type ImportRule = (typeof ImportRule)["Type"];
 export type ResolveConfig = (typeof ResolveConfig)["Type"];
 export type ResolveScope = (typeof ResolveScope)["Type"];
 export type ImportProbe = (typeof ImportProbe)["Type"];
+export type ImportProbeTarget = (typeof ImportProbeTarget)["Type"];
 export type ExportRule = (typeof ExportRule)["Type"];
 export type ExportProbe = (typeof ExportProbe)["Type"];
 export type BindingKind = (typeof BindingKind)["Type"];
+export type ExportFix = (typeof ExportFix)["Type"];
 export type MemberRule = (typeof MemberRule)["Type"];
 export type MemberProbe = (typeof MemberProbe)["Type"];
 export type MemberSubject = (typeof MemberSubject)["Type"];

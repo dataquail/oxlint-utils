@@ -2,7 +2,7 @@ import * as Result from "effect/Result";
 
 import { evaluateSelectedEdge, rulesSelecting, type SelectedRule } from "../../core/imports.js";
 import { formatMessage } from "../../domain/violation.js";
-import type { LoadedPolicy } from "./config-loader.js";
+import type { LoadedPolicy } from "../../load/policy.js";
 import {
   type CallNode,
   type ImportEqualsNode,

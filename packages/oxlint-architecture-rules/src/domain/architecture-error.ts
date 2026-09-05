@@ -29,6 +29,22 @@ export class PatternInvalid extends Schema.TaggedErrorClass<PatternInvalid>("Pat
   }
 }
 
+// A `resolve.scopes` entry a language pack cannot build a resolver from: options
+// it does not understand, or a language no pack answers to. Raised by the pack,
+// without the config path, which the loader adds when it reports it.
+export class ScopeInvalid extends Schema.TaggedErrorClass<ScopeInvalid>("ScopeInvalid")(
+  "ScopeInvalid",
+  {
+    files: Schema.String,
+    language: Schema.String,
+    detail: Schema.String,
+  },
+) {
+  override get message(): string {
+    return `resolve scope ${JSON.stringify(this.files)} (${this.language}): ${this.detail}`;
+  }
+}
+
 export class ImportUnresolved extends Schema.TaggedErrorClass<ImportUnresolved>("ImportUnresolved")(
   "ImportUnresolved",
   {

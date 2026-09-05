@@ -8,9 +8,10 @@ import { describe, it } from "vitest";
 import { EMPTY_BASELINE, makeBaselineFilter } from "../../core/baseline.js";
 import { EMPTY_GRAPH_RULES } from "../../core/graph.js";
 import { compileStructure } from "../../core/structure.js";
+import { makeFactExtractorFake } from "../../infrastructure/fact-extractor-fake.js";
 import { makeFileSystemFake } from "../../infrastructure/file-system-fake.js";
 import { makeModuleResolverFake } from "../../infrastructure/module-resolver-fake.js";
-import type { LoadedPolicy } from "./config-loader.js";
+import type { LoadedPolicy } from "../../load/policy.js";
 import { makeStructureRule } from "./structure-rule.js";
 
 RuleTester.describe = describe;
@@ -20,7 +21,9 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../
 const MOD = "^packages/server/src/modules/[^/]+";
 
 const config = {
-  resolve: { scopes: [{ files: "", tsconfig: "tsconfig.resolve.json" }] },
+  resolve: {
+    scopes: [{ files: "", language: "typescript", options: { tsconfig: "tsconfig.resolve.json" } }],
+  },
   structure: {
     roots: [
       {
@@ -67,8 +70,11 @@ const policy = (present: ReadonlyArray<string>): LoadedPolicy => {
     adoption: { unrestricted: [], partial: [] },
     structure: structure.success,
     fileSystem: makeFileSystemFake(present),
+    languages: [],
+    extractor: makeFactExtractorFake({}),
     resolver: makeModuleResolverFake({}),
     ignoreUnresolved: [],
+    notices: [],
     baseline: makeBaselineFilter(EMPTY_BASELINE),
   };
 };

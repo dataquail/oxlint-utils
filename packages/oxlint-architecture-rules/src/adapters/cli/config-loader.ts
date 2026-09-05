@@ -7,14 +7,12 @@ import { typescriptLanguage } from "../../infrastructure/languages/typescript/in
 import { DEFAULT_CONFIG_FILENAME, readManifestFile } from "../../infrastructure/manifest-file.js";
 import { type LoadedPolicy, loadPolicy } from "../../load/policy.js";
 
-export { DEFAULT_CONFIG_FILENAME } from "../../infrastructure/manifest-file.js";
 export type { LoadedPolicy } from "../../load/policy.js";
 
-// The plugin's composition root: read the manifest file, construct the
-// language packs and the live file system, and hand them to the loader. A load
-// failure throws out of here and out of oxlint's import of the plugin — a
-// plugin that came up with no policy would report nothing and be
-// indistinguishable from a clean codebase.
+// The CLI's composition root: read the manifest file, construct the language
+// packs and the live file system, and hand them to the loader. The plugin has
+// one of its own with the same three lines, on purpose — the two hosts share
+// the core and never each other.
 export const loadPolicyFromFile = async (
   repoRoot: string,
   configFilename: string = DEFAULT_CONFIG_FILENAME,

@@ -6,7 +6,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { loadPolicy } from "../oxlint/config-loader.js";
+import { loadPolicyFromFile as loadPolicy } from "./config-loader.js";
 import {
   check,
   type CliFailure,
@@ -25,7 +25,7 @@ const repoRoot = path.resolve(here, "../../../.tmp-cli-tests");
 // — walker, parser, resolver, all four evaluators — without asserting anything
 // about this repository's own code.
 const MANIFEST = `export default {
-  resolve: { scopes: [{ files: "", tsconfig: "tsconfig.json" }], unresolved: "off" },
+  resolve: { scopes: [{ files: "", language: "typescript", options: { tsconfig: "tsconfig.json" } }], unresolved: "off" },
   graph: {
     cycles: [{ name: "no-cycles", message: "These files import each other.", within: "lib/**" }],
   },
@@ -51,7 +51,8 @@ const MANIFEST = `export default {
           members: [
             {
               message: 'Port method "{name}" is not in the vocabulary.',
-              subject: "type-members",
+              subject: "members",
+              declares: ["type", "interface"],
               in: "*RepositoryShape",
               allow: ["findOne"],
             },
@@ -243,7 +244,7 @@ describe.sequential("facts", () => {
     expect(output).toContain("edges:");
     expect(output).toContain("../lib/bus.ts");
     expect(output).toContain("named     makeBus");
-    expect(output).toContain("type-members:");
+    expect(output).toContain("members:");
     expect(output).toContain("ThingRepositoryShape.findOneById");
     expect(output).toContain("calls: (none)");
     expect(output).toContain("exports:");

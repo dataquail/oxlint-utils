@@ -1,6 +1,11 @@
 import * as Result from "effect/Result";
 
-import type { MemberProbe, MemberRule, MemberSubject } from "../domain/architecture-config.js";
+import type {
+  DeclarationKind,
+  MemberProbe,
+  MemberRule,
+  MemberSubject,
+} from "../domain/architecture-config.js";
 import type { PatternInvalid } from "../domain/architecture-error.js";
 import type { MemberSite } from "../domain/facts.js";
 import type { Violation } from "../domain/violation.js";
@@ -16,6 +21,8 @@ export type CompiledMemberRule = {
   readonly fromNot: ReadonlyArray<RegExp>;
   readonly subject: MemberSubject;
   readonly in: ReadonlyArray<RegExp>;
+  // Which declarations a `members` rule speaks to; `null` for every kind.
+  readonly declares: ReadonlyArray<DeclarationKind> | null;
   readonly match: ReadonlyArray<RegExp>;
   readonly matchNot: ReadonlyArray<RegExp>;
   readonly allow: ReadonlyArray<RegExp>;
@@ -57,6 +64,7 @@ export const compileMemberRule = (
     from,
     fromNot,
     in: inside,
+    declares: rule.declares === undefined ? null : [...rule.declares],
     match,
     matchNot,
     allow,
@@ -86,6 +94,12 @@ export const memberRulesSelecting = (
 const governs = (rule: CompiledMemberRule, site: MemberSite): boolean => {
   if (rule.subject !== site.subject) return false;
   if (rule.in.length > 0 && (site.in === undefined || !anyMatches(rule.in, site.in))) return false;
+  if (
+    rule.declares !== null &&
+    (site.declares === undefined || !rule.declares.includes(site.declares))
+  ) {
+    return false;
+  }
   if (rule.match.length > 0 && !anyMatches(rule.match, site.name)) return false;
   if (rule.matchNot.length > 0 && anyMatches(rule.matchNot, site.name)) return false;
   return true;
@@ -113,10 +127,10 @@ export const evaluateMemberSite = (
 
 // A probe with a `source` is checked through the parser: the snippet must
 // yield a site named `probe.name` that the rule reports. That is the check a
-// synthetic site cannot make — a rule about an `interface` passes its
-// synthetic probe today and reports nothing, because the extractor never hands
-// it an interface member. A probe without a source is checked against the
-// rule's patterns alone.
+// synthetic site cannot make — a rule about a declaration shape the extractor
+// does not read passes its synthetic probe and reports nothing. A probe
+// without a source is checked against the rule's patterns alone, as a site
+// declared in the first kind the rule speaks to.
 export const memberRulesFailingTheirProbe = (
   rules: ReadonlyArray<CompiledMemberRule>,
   extractor: FactExtractor,
@@ -132,6 +146,11 @@ export const memberRulesFailingTheirProbe = (
               subject: rule.subject,
               name: rule.probe.name,
               ...(rule.probe.in === undefined ? {} : { in: rule.probe.in }),
+              ...(rule.probe.declares === undefined
+                ? rule.declares === null
+                  ? {}
+                  : { declares: rule.declares[0] }
+                : { declares: rule.probe.declares }),
             },
           ]
         : extractor

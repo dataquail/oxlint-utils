@@ -9,9 +9,10 @@ import { EMPTY_BASELINE, makeBaselineFilter } from "../../core/baseline.js";
 import { compileExportRules } from "../../core/exports.js";
 import { EMPTY_GRAPH_RULES } from "../../core/graph.js";
 import { EMPTY_STRUCTURE } from "../../core/structure.js";
+import { makeFactExtractorFake } from "../../infrastructure/fact-extractor-fake.js";
 import { makeFileSystemFake } from "../../infrastructure/file-system-fake.js";
 import { makeModuleResolverFake } from "../../infrastructure/module-resolver-fake.js";
-import type { LoadedPolicy } from "./config-loader.js";
+import type { LoadedPolicy } from "../../load/policy.js";
 import { makeExportsRule } from "./exports-rule.js";
 
 RuleTester.describe = describe;
@@ -24,7 +25,9 @@ const CQRS_BARREL =
 const EFFECT_BARREL = "node_modules/.pnpm/effect@4.0.0-beta.94/node_modules/effect/dist/index.js";
 
 const config = {
-  resolve: { scopes: [{ files: "", tsconfig: "tsconfig.resolve.json" }] },
+  resolve: {
+    scopes: [{ files: "", language: "typescript", options: { tsconfig: "tsconfig.resolve.json" } }],
+  },
   exports: [
     {
       name: "bus-factories-at-composition-roots",
@@ -64,12 +67,15 @@ const policy = (): LoadedPolicy => {
     graph: EMPTY_GRAPH_RULES,
     adoption: { unrestricted: [], partial: [] },
     fileSystem: makeFileSystemFake([]),
+    languages: [],
+    extractor: makeFactExtractorFake({}),
     resolver: makeModuleResolverFake({
       "@effect-server-utils/cqrs": CQRS_BARREL,
       effect: EFFECT_BARREL,
       "effect/Effect": "node_modules/.pnpm/effect@4.0.0-beta.94/node_modules/effect/dist/Effect.js",
     }),
     ignoreUnresolved: [],
+    notices: [],
     baseline: makeBaselineFilter(EMPTY_BASELINE),
   };
 };

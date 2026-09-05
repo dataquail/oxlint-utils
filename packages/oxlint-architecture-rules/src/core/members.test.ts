@@ -25,7 +25,8 @@ const dumbReads: MemberRule = {
   message: 'Port method "{name}" is not a read this vocabulary admits.',
   probe: { from: PORT, in: "TodosRepositoryShape", name: "findOneById" },
   from: "^packages/server/src/modules/[^/]+/domain/[^/]+/[^/]+\\.repository\\.ts$",
-  subject: "type-members",
+  subject: "members",
+  declares: ["type", "interface"],
   in: "Repository(Shape)?$",
   match: "^find",
   allow: "^find(One|Many)$",
@@ -48,9 +49,18 @@ const violationsAt = (rules: ReadonlyArray<MemberRule>, site: MemberSite) =>
 
 const typeMember = (name: string, declaration = "TodosRepositoryShape"): MemberSite => ({
   file: PORT,
-  subject: "type-members",
+  subject: "members",
   name,
   in: declaration,
+  declares: "type",
+});
+
+const classMember = (name: string, declaration = "TodosRepositoryShape"): MemberSite => ({
+  file: PORT,
+  subject: "members",
+  name,
+  in: declaration,
+  declares: "class",
 });
 
 const call = (name: string, file = VIEW): MemberSite => ({ file, subject: "calls", name });
@@ -74,6 +84,23 @@ describe("evaluateMemberSite", () => {
     // The `in` filter is what keeps a helper type in the same file out of scope.
     it("ignores a declaration its `in` pattern does not name", () => {
       expect(violationsAt([dumbReads], typeMember("findOneById", "TodoRow"))).toEqual([]);
+    });
+
+    // `declares` is the selector that carries what `type-members` used to
+    // mean. A rule about a type's members says nothing about a class of the
+    // same name; a rule about classes says nothing about types; a rule that
+    // names no kind speaks to every declaration.
+    it("speaks only to the declaration kinds it names", () => {
+      expect(violationsAt([dumbReads], classMember("findOneByEmail"))).toEqual([]);
+
+      const classes: MemberRule = { ...dumbReads, name: "class-reads", declares: ["class"] };
+      expect(violationsAt([classes], classMember("findOneByEmail"))).toEqual(["class-reads"]);
+      expect(violationsAt([classes], typeMember("findOneByEmail"))).toEqual([]);
+
+      const { declares: _dropped, ...anyDeclaration } = dumbReads;
+      const every: MemberRule = { ...anyDeclaration, name: "any-reads" };
+      expect(violationsAt([every], classMember("findOneByEmail"))).toEqual(["any-reads"]);
+      expect(violationsAt([every], typeMember("findOneByEmail"))).toEqual(["any-reads"]);
     });
 
     it("ignores a file its `from` pattern does not select", () => {
@@ -101,7 +128,7 @@ describe("evaluateMemberSite", () => {
 
     it("does not apply a call rule to a type member of the same name", () => {
       expect(
-        violationsAt([viewHooks], { file: VIEW, subject: "type-members", name: "useEffect" }),
+        violationsAt([viewHooks], { file: VIEW, subject: "members", name: "useEffect" }),
       ).toEqual([]);
     });
   });
@@ -114,7 +141,8 @@ describe("evaluateMemberSite", () => {
       message: 'Port method "{name}" reads like a domain verb.',
       probe: { from: PORT, in: "TodosRepositoryShape", name: "grantRole" },
       from: dumbReads.from,
-      subject: "type-members",
+      subject: "members",
+      declares: ["type", "interface"],
       in: "Repository(Shape)?$",
       matchNot: "^find",
       allow: "^(insert|update|delete|upsert)(One|Many)$",
@@ -168,7 +196,13 @@ describe("memberRulesFailingTheirProbe", () => {
         specifiers: [],
         bindings: new Map(),
         memberSites: [
-          { file: "", subject: "type-members", name: "findOneById", in: "TodosRepositoryShape" },
+          {
+            file: "",
+            subject: "members",
+            name: "findOneById",
+            in: "TodosRepositoryShape",
+            declares: "type",
+          },
         ],
       },
     });

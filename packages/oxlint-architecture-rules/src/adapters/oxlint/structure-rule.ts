@@ -1,6 +1,6 @@
 import { evaluateStructure } from "../../core/structure.js";
 import { formatMessage } from "../../domain/violation.js";
-import type { LoadedPolicy } from "./config-loader.js";
+import type { LoadedPolicy } from "../../load/policy.js";
 import { type OxlintRule, type RuleContext, toRepoRelative } from "./oxlint-api.js";
 
 export const makeStructureRule = (policy: LoadedPolicy): OxlintRule => ({

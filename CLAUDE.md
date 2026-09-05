@@ -136,11 +136,17 @@ TS2451, and the compiler owns it.
 - `src/core/` — the pure evaluators (`imports`, `exports`, `members`, `surface`, `structure`, `graph`,
   `coverage`, `baseline`, `patterns`). Given facts, they return violations; they never read a file.
 - `src/manifest/` — compiling the manifest tree down to flat, resolved rules (`lowerManifest`).
-- `src/ports/` + `src/infrastructure/` — the `FileSystem`, `ModuleResolver` and `FactExtractor` ports,
-  with a live implementation (`unrs-resolver`, `typescript`) and a fake per port. Tests drive the fakes.
-  The extractor is the TypeScript parser the CLI reads every file through and the loader parses
-  authored probes with; the plugin reads oxlint's tree instead, and `src/adapters/parity.test.ts`
-  holds the two to one answer.
+- `src/load/` — `loadPolicy`: decode, lower, compile and probe a manifest the host has already
+  read, with the language packs and the `FileSystem` the host hands in. Language-neutral; the
+  resolver and the extractor it returns route each file to the scope's language.
+- `src/ports/` + `src/infrastructure/` — the `FileSystem`, `ModuleResolver`, `FactExtractor` and
+  `Language` ports, with a live implementation (`unrs-resolver`, `typescript`) and a fake per port.
+  Tests drive the fakes. `infrastructure/languages/typescript/` assembles the live extractor and
+  resolver into one `Language`; the pure tiers never import it (a `reach` rule in the repo policy
+  says so), and only the two hosts' `config-loader.ts` construct it. The extractor is the
+  TypeScript parser the CLI reads every file through and the loader parses authored probes with;
+  the plugin reads oxlint's tree instead, and `src/adapters/parity.test.ts` holds the two to one
+  answer.
 - `src/adapters/oxlint/` and `src/adapters/cli/` — the two delivery mechanisms. Both answer to the same
   core, deliberately, so an alpha oxlint plugin API is not a single point of failure.
 

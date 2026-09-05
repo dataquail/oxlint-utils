@@ -1,4 +1,4 @@
-import { DEFAULT_CONFIG_FILENAME, loadPolicy } from "./config-loader.js";
+import { DEFAULT_CONFIG_FILENAME, loadPolicyFromFile } from "./config-loader.js";
 import { makeExportsRule } from "./exports-rule.js";
 import { makeImportsRule } from "./imports-rule.js";
 import { makeMembersRule } from "./members-rule.js";
@@ -11,10 +11,16 @@ import { makeSurfaceRule } from "./surface-rule.js";
 // out of the import and fails the run — which is the point: a plugin that came
 // up with no policy would report nothing and be indistinguishable from a clean
 // codebase.
-const policy = await loadPolicy(
+const policy = await loadPolicyFromFile(
   process.env.ARCHITECTURE_ROOT ?? process.cwd(),
   process.env.ARCHITECTURE_CONFIG ?? DEFAULT_CONFIG_FILENAME,
 );
+
+// A manifest written in a shape on its way out still loads; it says so once,
+// here, rather than on every file.
+for (const notice of policy.notices) {
+  process.stderr.write(`[architecture] deprecated: ${notice}\n`);
+}
 
 export const rules: {
   readonly imports: OxlintRule;

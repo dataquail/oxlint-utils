@@ -9,9 +9,10 @@ import { EMPTY_BASELINE, makeBaselineFilter } from "../../core/baseline.js";
 import { EMPTY_GRAPH_RULES } from "../../core/graph.js";
 import { compileMemberRules } from "../../core/members.js";
 import { EMPTY_STRUCTURE } from "../../core/structure.js";
+import { makeFactExtractorFake } from "../../infrastructure/fact-extractor-fake.js";
 import { makeFileSystemFake } from "../../infrastructure/file-system-fake.js";
 import { makeModuleResolverFake } from "../../infrastructure/module-resolver-fake.js";
-import type { LoadedPolicy } from "./config-loader.js";
+import type { LoadedPolicy } from "../../load/policy.js";
 import { makeMembersRule } from "./members-rule.js";
 
 RuleTester.describe = describe;
@@ -20,7 +21,9 @@ RuleTester.it = it;
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../..");
 
 const config = {
-  resolve: { scopes: [{ files: "", tsconfig: "tsconfig.resolve.json" }] },
+  resolve: {
+    scopes: [{ files: "", language: "typescript", options: { tsconfig: "tsconfig.resolve.json" } }],
+  },
   members: [
     {
       name: "dumb-repository-ports",
@@ -31,8 +34,23 @@ const config = {
         name: "findOneById",
       },
       from: "\\.repository\\.ts$",
-      subject: "type-members" as const,
+      subject: "members" as const,
+      declares: ["type", "interface"] as const,
       in: "Repository(Shape)?$",
+      allow: "^((insert|update|delete|upsert)(One|Many)|find(One|Many))$",
+    },
+    {
+      name: "live-adapter-vocabulary",
+      message: 'A live adapter exposes "{name}", which its port does not declare.',
+      probe: {
+        from: "packages/server/src/modules/todos/infrastructure/todos.repository-live.ts",
+        in: "TodosRepositoryLive",
+        name: "grantRole",
+        declares: "class" as const,
+      },
+      from: "-live\\.ts$",
+      subject: "members" as const,
+      declares: ["class"] as const,
       allow: "^((insert|update|delete|upsert)(One|Many)|find(One|Many))$",
     },
     {
@@ -61,8 +79,11 @@ const policy = (): LoadedPolicy => {
     graph: EMPTY_GRAPH_RULES,
     adoption: { unrestricted: [], partial: [] },
     fileSystem: makeFileSystemFake([]),
+    languages: [],
+    extractor: makeFactExtractorFake({}),
     resolver: makeModuleResolverFake({}),
     ignoreUnresolved: [],
+    notices: [],
     baseline: makeBaselineFilter(EMPTY_BASELINE),
   };
 };
@@ -72,6 +93,10 @@ const PORT = path.join(
   "packages/server/src/modules/todos/domain/todo/todos.repository.ts",
 );
 const VIEW = path.join(repoRoot, "packages/web/features/todos/todos.view.tsx");
+const LIVE = path.join(
+  repoRoot,
+  "packages/server/src/modules/todos/infrastructure/todos.repository-live.ts",
+);
 
 new RuleTester({ cwd: repoRoot }).run("members", makeMembersRule(policy()), {
   valid: [
@@ -81,8 +106,13 @@ new RuleTester({ cwd: repoRoot }).run("members", makeMembersRule(policy()), {
     { code: "type TodoRow = { readonly findOneById: () => void };", filename: PORT },
     // A reference is not followed: `Base`'s members are `Base`'s, not the port's.
     { code: "type TodosRepositoryShape = Base;", filename: PORT },
-    // A class is not a type declaration.
+    // A class body is read, but this rule speaks to types and interfaces only.
     { code: "class TodosRepositoryShape { grantRole(): void {} }", filename: PORT },
+    // A class rule, satisfied: the vocabulary, a constructor, a private member.
+    {
+      code: "class TodosRepositoryLive { constructor() {} findOne(): void {} #cache = 1; }",
+      filename: LIVE,
+    },
     { code: "const a = useAtomValue(x);", filename: VIEW },
     { code: "const b = useId();", filename: VIEW },
     // A `use` name that is not a hook name.
@@ -118,6 +148,17 @@ new RuleTester({ cwd: repoRoot }).run("members", makeMembersRule(policy()), {
       code: "type TodosRepositoryShape = { grantRole(): void } | { findOne(): void };",
       filename: PORT,
       errors: [{ message: /^\[dumb-repository-ports\] Port method "grantRole"/ }],
+    },
+    {
+      // A class body, read as a declaration like any other: a method, a
+      // property, an accessor and a static member all carry names.
+      code: "export class TodosRepositoryLive { grantRole(): void {} get roles() { return 1; } static byId = 1; }",
+      filename: LIVE,
+      errors: [
+        { message: /^\[live-adapter-vocabulary\] A live adapter exposes "grantRole"/ },
+        { message: /^\[live-adapter-vocabulary\] A live adapter exposes "roles"/ },
+        { message: /^\[live-adapter-vocabulary\] A live adapter exposes "byId"/ },
+      ],
     },
     {
       code: "const a = useState(0);",

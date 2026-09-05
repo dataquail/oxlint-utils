@@ -14,18 +14,20 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../
 // package's.
 const config: ResolveConfig = {
   scopes: [
-    { files: "^packages/", tsconfig: "tsconfig.resolve.json" },
-    { files: "^website/", tsconfig: "website/tsconfig.json" },
+    { files: "^packages/", language: "typescript", options: { tsconfig: "tsconfig.resolve.json" } },
+    { files: "^website/", language: "typescript", options: { tsconfig: "website/tsconfig.json" } },
   ],
 };
 
-const resolver = makeModuleResolverLive(repoRoot, config);
-
-const resolve = (fromFile: string, specifier: string) => {
-  const outcome = resolver.resolve(fromFile, specifier);
-  if (Result.isFailure(outcome)) throw outcome.failure;
-  return outcome.success;
+const unwrap = <A, E>(result: Result.Result<A, E>): A => {
+  if (Result.isFailure(result)) throw result.failure;
+  return result.success;
 };
+
+const resolver = unwrap(makeModuleResolverLive(repoRoot, config));
+
+const resolve = (fromFile: string, specifier: string) =>
+  unwrap(resolver.resolve(fromFile, specifier));
 
 const PLUGIN_FILE = "packages/oxlint-architecture-rules/src/adapters/oxlint/plugin.ts";
 
@@ -50,10 +52,15 @@ describe("makeModuleResolverLive", () => {
     );
   });
 
-  it("resolves an npm subpath into node_modules and marks it external", () => {
+  it("resolves an npm subpath into node_modules and marks it external, by package name", () => {
     const target = resolve(PLUGIN_FILE, "effect/Schema");
     expect(target.kind).toBe("external");
+    expect(target.package).toBe("effect");
     expect(target.path).toMatch(/node_modules\/effect\/dist\/Schema\.js$/);
+  });
+
+  it("does not report a package for a repository file", () => {
+    expect(resolve(PLUGIN_FILE, "./config-loader.js").package).toBeUndefined();
   });
 
   // A builtin is its own kind: a rule fencing off npm dependencies must not
@@ -76,5 +83,47 @@ describe("makeModuleResolverLive", () => {
     const target = resolve("website/src/content.config.ts", "@astrojs/starlight/loaders");
     expect(target.kind).toBe("external");
     expect(target.path).toMatch(/@astrojs\/starlight\/loaders\.ts$/);
+  });
+
+  // A scoped package is two path segments, and pnpm's store puts a second
+  // `node_modules/` in front of the real one.
+  it("names a scoped package by both segments, from the last node_modules on the path", () => {
+    expect(resolve("website/src/content.config.ts", "@astrojs/starlight/loaders").package).toBe(
+      "@astrojs/starlight",
+    );
+  });
+});
+
+describe("scope options", () => {
+  const scope = (options: unknown) =>
+    makeModuleResolverLive(repoRoot, {
+      scopes: [{ files: "", language: "typescript", options }],
+    });
+
+  // Every option is read from the scope, never from the manifest's top level.
+  it("honours the scope's own extensions", () => {
+    const withoutTs = unwrap(scope({ tsconfig: "tsconfig.resolve.json", extensions: [".json"] }));
+    expect(Result.isFailure(withoutTs.resolve(PLUGIN_FILE, "./config-loader"))).toBe(true);
+    const withTs = unwrap(scope({ tsconfig: "tsconfig.resolve.json", extensions: [".ts"] }));
+    expect(Result.isSuccess(withTs.resolve(PLUGIN_FILE, "./config-loader"))).toBe(true);
+  });
+
+  it("refuses a scope with no tsconfig", () => {
+    expect(Result.isFailure(scope(undefined))).toBe(true);
+    expect(Result.isFailure(scope({}))).toBe(true);
+  });
+
+  // A misspelled option would otherwise be a resolver quietly built on
+  // defaults, and every rule about that scope evaluated against the wrong files.
+  it("refuses an option it does not know", () => {
+    const outcome = scope({ tsconfig: "tsconfig.resolve.json", mainField: ["main"] });
+    expect(Result.isFailure(outcome) && outcome.failure.message).toMatch(/mainField/);
+  });
+
+  it("refuses a scope for a language it does not serve", () => {
+    const outcome = makeModuleResolverLive(repoRoot, {
+      scopes: [{ files: "", language: "go", options: {} }],
+    });
+    expect(Result.isFailure(outcome) && outcome.failure.message).toMatch(/"go" scope/);
   });
 });
