@@ -49,7 +49,7 @@ and every glob in it is expanded through `aliases` like the rest of the manifest
 A strongly connected component — two or more files that can each reach the other, or a file
 that imports itself — among the files `within` (and not `withinNot`). Each component is
 reported **once**, and the violation's subject is the component as a sorted set, so its
-[baseline](/oxlint-utils/architecture-rules/enforcement/baseline/) entry survives an edge added
+[baseline](/goodbones/architecture-rules/enforcement/baseline/) entry survives an edge added
 or removed elsewhere in the same cycle.
 
 A cycle that runs through a file outside the scope is not seen: `withinNot: "**/*.test.ts"`
@@ -87,15 +87,15 @@ and survives the route changing underneath it.
 Every file the CLI walked, and for each the walked files it resolves to. An external package,
 a builtin, a file outside the walked roots, and an edge nobody can resolve are not in it —
 the first three are not the repository's shape, and the last is reported by
-[`check`](/oxlint-utils/architecture-rules/enforcement/cli/) on its own. A type-only import is
+[`check`](/goodbones/architecture-rules/enforcement/cli/) on its own. A type-only import is
 an edge like any other: it is still a dependency between the two files.
 
 ## CLI only
 
 Graph rules are **evaluated by `architecture check` and not by the oxlint plugin.** The plugin
 sees one file at a time, with no view of the others, and cannot answer "does anything import
-this?". Both adapters compile and [probe](/oxlint-utils/architecture-rules/enforcement/probes/)
+this?". Both adapters compile and [probe](/goodbones/architecture-rules/enforcement/probes/)
 the rules at load — a `via` that covers its own target fails `oxlint` too — but only the CLI
 has the graph to evaluate them against. See
-[the CLI](/oxlint-utils/architecture-rules/enforcement/cli/#graph-rules) for what that means for
+[the CLI](/goodbones/architecture-rules/enforcement/cli/#graph-rules) for what that means for
 how the two are run.

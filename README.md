@@ -12,7 +12,7 @@ enforced by an oxlint plugin in the editor and a CLI in CI. Published as indepen
 | [`@goodbones/cli`](packages/cli)               | The `architecture` CLI: `check`, `baseline`, `coverage`, `explain`, `facts`, and the graph family.                  |
 | [`@goodbones/oxlint`](packages/oxlint)         | The oxlint plugin: `imports`, `exports`, `members`, `structure` and `surface` as five rules over the same manifest. |
 
-📖 **[Documentation](https://dataquail.github.io/oxlint-utils)**
+📖 **[Documentation](https://dataquail.github.io/goodbones)**
 
 ```sh
 pnpm add -D @goodbones/oxlint @goodbones/cli

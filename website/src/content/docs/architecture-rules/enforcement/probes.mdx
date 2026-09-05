@@ -31,7 +31,7 @@ script someone remembers to run — a load-time error that stops the lint run.
 | `graph`     | a synthetic graph the rule must report on: two files importing each other, a lone file, an edge that touches no `via` |
 
 A rule that admits everything by design — the layout rule emitted by
-[`layout: "open"`](/oxlint-utils/architecture-rules/manifest/structure/) — has no path it must
+[`layout: "open"`](/goodbones/architecture-rules/manifest/structure/) — has no path it must
 reject, and is skipped rather than given a probe it could not pass.
 
 Structure parity is checked _structurally_ — that the rule still selects its probe path and
@@ -131,6 +131,6 @@ against your intent rather than against itself.
 Two more ways a policy can be quietly not enforcing anything, both closed elsewhere:
 
 - **An unresolved import** — no rule can police an edge that does not resolve, so
-  [resolution failure is an error](/oxlint-utils/architecture-rules/enforcement/resolution/).
+  [resolution failure is an error](/goodbones/architecture-rules/enforcement/resolution/).
 - **A stale build** — oxlint imports compiled JavaScript, so a stale build directory enforces
   a stale policy and still lints green. Make the build a `prelint` step, not a convention.

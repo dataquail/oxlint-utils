@@ -11,7 +11,7 @@ export default defineConfig({
         {
           icon: "github",
           label: "GitHub",
-          href: "https://github.com/dataquail/oxlint-utils",
+          href: "https://github.com/dataquail/goodbones",
         },
       ],
       // One group per package, so a second library lands beside this one rather
@@ -58,5 +58,5 @@ export default defineConfig({
     }),
   ],
   site: "https://dataquail.github.io",
-  base: "/oxlint-utils",
+  base: "/goodbones",
 });

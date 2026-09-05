@@ -3,14 +3,14 @@ title: Adoption
 description: Ratchets on the policy itself — a ceiling on the tiers not yet tightened, and a floor on how much of the tree the rules reach.
 ---
 
-A [probe](/oxlint-utils/architecture-rules/enforcement/probes/) proves a rule **can** fire. The
-[baseline](/oxlint-utils/architecture-rules/enforcement/baseline/) is a ratchet on the violations
+A [probe](/goodbones/architecture-rules/enforcement/probes/) proves a rule **can** fire. The
+[baseline](/goodbones/architecture-rules/enforcement/baseline/) is a ratchet on the violations
 the code is carrying. This page is the third question, which neither of those asks: **how
 much of the tree does the policy actually reach?**
 
 A policy adopted incrementally has two honest ways to say "not this part yet":
 
-- [`partial`](/oxlint-utils/architecture-rules/manifest/inheritance/) on a folder — carry policy
+- [`partial`](/goodbones/architecture-rules/manifest/inheritance/) on a folder — carry policy
   for the subtree without claiming to enumerate its contents.
 - `unrestricted: true` on an `imports` block — this tier has no allowlist; only its
   prohibitions apply.
@@ -80,5 +80,5 @@ see which family fell. The numbers are the ones `check` compares against the flo
 :::note
 Coverage is about **reach**, not correctness. A family at 100% says every file has a rule
 that speaks to it; whether the rule says the right thing is what
-[planting the violation](/oxlint-utils/architecture-rules/enforcement/probes/#two-more-habits) is for.
+[planting the violation](/goodbones/architecture-rules/enforcement/probes/#two-more-habits) is for.
 :::

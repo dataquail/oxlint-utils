@@ -17,12 +17,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dataquail/oxlint-utils.git",
+    "url": "git+https://github.com/dataquail/goodbones.git",
     "directory": "packages/core"
   },
-  "homepage": "https://dataquail.github.io/oxlint-utils",
+  "homepage": "https://dataquail.github.io/goodbones",
   "bugs": {
-    "url": "https://github.com/dataquail/oxlint-utils/issues"
+    "url": "https://github.com/dataquail/goodbones/issues"
   },
   "exports": {
     ".": {

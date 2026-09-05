@@ -216,4 +216,4 @@ Dependabot is configured not to open PRs for `effect` or `@effect/vitest` for th
 - Confirm the GitHub release notes read sensibly — they are generated from the conventional commits.
 - If the documented API changed, deploy the docs: run the **Deploy Documentation** workflow
   (`workflow_dispatch`), which builds `website/` and publishes it to GitHub Pages at
-  <https://dataquail.github.io/oxlint-utils>.
+  <https://dataquail.github.io/goodbones>.
